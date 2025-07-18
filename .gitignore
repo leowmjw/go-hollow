@@ -1,0 +1,11 @@
+# Ignore Direnv
+.envrc*
+
+# Ignore Goland
+.idea
+
+# Ignore binaries
+demo
+integration.test
+
+
