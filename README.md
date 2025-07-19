@@ -254,7 +254,7 @@ size := rs.Size()
 #### In-Memory Store
 
 ```go
-import "github.com/leow/go-raw-hollow/internal/memblob"
+import "github.com/leowmjw/go-hollow/internal/memblob"
 
 store := memblob.New()
 ```

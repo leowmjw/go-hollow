@@ -4,13 +4,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/leow/go-raw-hollow/internal/memblob"
+	"github.com/leowmjw/go-hollow/internal/memblob"
 )
 
 func TestMetricsCollectorInvoked(t *testing.T) {
 	collected := false
 	var collectedMetrics Metrics
-	collFn := func(m Metrics) { 
+	collFn := func(m Metrics) {
 		collected = true
 		collectedMetrics = m
 	}
@@ -28,15 +28,15 @@ func TestMetricsCollectorInvoked(t *testing.T) {
 	if !collected {
 		t.Fatal("metrics not collected")
 	}
-	
+
 	if collectedMetrics.Version != version {
 		t.Fatalf("expected version %d, got %d", version, collectedMetrics.Version)
 	}
-	
+
 	if collectedMetrics.RecordCount != 1 {
 		t.Fatalf("expected record count 1, got %d", collectedMetrics.RecordCount)
 	}
-	
+
 	if collectedMetrics.ByteSize <= 0 {
 		t.Fatalf("expected positive byte size, got %d", collectedMetrics.ByteSize)
 	}
@@ -51,7 +51,7 @@ func TestMetricsCollectorWithMultipleItems(t *testing.T) {
 		WithBlobStager(blob),
 		WithMetricsCollector(collFn),
 	)
-	
+
 	_, err := p.RunCycle(func(ws WriteState) error {
 		if err := ws.Add("item1"); err != nil {
 			return err
@@ -79,7 +79,7 @@ func TestMetricsCollectorNotInvokedOnError(t *testing.T) {
 		WithBlobStager(blob),
 		WithMetricsCollector(collFn),
 	)
-	
+
 	// This should fail and not collect metrics
 	_, err := p.RunCycle(func(ws WriteState) error {
 		return errors.New("test error")

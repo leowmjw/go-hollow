@@ -3,7 +3,7 @@ package hollow
 import (
 	"testing"
 
-	"github.com/leow/go-raw-hollow/internal/memblob"
+	"github.com/leowmjw/go-hollow/internal/memblob"
 )
 
 func TestConsumerRefreshToVersion(t *testing.T) {
@@ -32,11 +32,11 @@ func TestConsumerRefreshWithNoNewVersion(t *testing.T) {
 		WithBlobRetriever(blob),
 		WithAnnouncementWatcher(func() (uint64, bool, error) { return 0, false, nil }),
 	)
-	
+
 	if err := cons.Refresh(); err != nil {
 		t.Fatalf("refresh failed: %v", err)
 	}
-	
+
 	if got := cons.CurrentVersion(); got != 0 {
 		t.Fatalf("expected version 0, got %d", got)
 	}
@@ -45,7 +45,7 @@ func TestConsumerRefreshWithNoNewVersion(t *testing.T) {
 func TestConsumerReadState(t *testing.T) {
 	blob := memblob.New()
 	prod := NewProducer(WithBlobStager(blob))
-	
+
 	// Produce some data
 	version, err := prod.RunCycle(func(ws WriteState) error {
 		if err := ws.Add("key1"); err != nil {
@@ -62,7 +62,7 @@ func TestConsumerReadState(t *testing.T) {
 		WithBlobRetriever(blob),
 		WithAnnouncementWatcher(func() (uint64, bool, error) { return version, true, nil }),
 	)
-	
+
 	if err := cons.Refresh(); err != nil {
 		t.Fatalf("refresh failed: %v", err)
 	}
@@ -77,11 +77,11 @@ func TestConsumerReadState(t *testing.T) {
 	if val, ok := rs.Get("key1"); !ok || val != "key1" {
 		t.Fatalf("expected key1 to exist with value 'key1', got %v, %v", val, ok)
 	}
-	
+
 	if val, ok := rs.Get("key2"); !ok || val != "key2" {
 		t.Fatalf("expected key2 to exist with value 'key2', got %v, %v", val, ok)
 	}
-	
+
 	if _, ok := rs.Get("nonexistent"); ok {
 		t.Fatal("expected nonexistent key to not exist")
 	}
@@ -90,7 +90,7 @@ func TestConsumerReadState(t *testing.T) {
 func TestConsumerMultipleRefresh(t *testing.T) {
 	blob := memblob.New()
 	prod := NewProducer(WithBlobStager(blob))
-	
+
 	// First version
 	v1, err := prod.RunCycle(func(ws WriteState) error {
 		return ws.Add("v1")
@@ -98,7 +98,7 @@ func TestConsumerMultipleRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first cycle failed: %v", err)
 	}
-	
+
 	// Second version
 	v2, err := prod.RunCycle(func(ws WriteState) error {
 		return ws.Add("v2")
