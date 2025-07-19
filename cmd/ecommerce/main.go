@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -361,9 +362,9 @@ func (em *EcommerceMetrics) PrintBusinessReport() {
 	em.mu.RLock()
 	defer em.mu.RUnlock()
 	
-	fmt.Printf("\n" + "="*60 + "\n")
+	fmt.Print("\n" + strings.Repeat("=", 60) + "\n")
 	fmt.Printf("E-COMMERCE BUSINESS REPORT\n")
-	fmt.Printf("="*60 + "\n")
+	fmt.Print(strings.Repeat("=", 60) + "\n")
 	
 	// Revenue metrics
 	fmt.Printf("Revenue Metrics:\n")
@@ -421,7 +422,7 @@ func (em *EcommerceMetrics) PrintBusinessReport() {
 		fmt.Printf("  %02d:00 - %6d views, $%.2f revenue\n", hour, traffic, revenue)
 	}
 	
-	fmt.Printf("="*60 + "\n")
+	fmt.Print(strings.Repeat("=", 60) + "\n")
 }
 
 func (em *EcommerceMetrics) printTopProducts(data map[string]int64, limit int) {

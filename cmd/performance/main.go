@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math"
 	"math/rand"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -415,9 +415,9 @@ func (pt *PerformanceTest) printProgressReport() {
 }
 
 func (pt *PerformanceTest) GenerateReport() {
-	fmt.Printf("\n" + "="*80 + "\n")
+	fmt.Print("\n" + strings.Repeat("=", 80) + "\n")
 	fmt.Printf("PERFORMANCE TEST REPORT\n")
-	fmt.Printf("="*80 + "\n")
+	fmt.Print(strings.Repeat("=", 80) + "\n")
 	
 	totalDuration := time.Since(pt.metrics.startTime)
 	
@@ -458,7 +458,7 @@ func (pt *PerformanceTest) GenerateReport() {
 	// Performance assessment
 	pt.assessPerformance()
 	
-	fmt.Printf("="*80 + "\n")
+	fmt.Print(strings.Repeat("=", 80) + "\n")
 }
 
 func (pt *PerformanceTest) analyzeLatencies() {

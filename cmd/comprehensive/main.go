@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -163,7 +164,7 @@ func (cd *ComprehensiveDemo) Initialize() error {
 	cd.mu.Unlock()
 	
 	fmt.Printf("🚀 Initializing Comprehensive Hollow-Go Demo\n")
-	fmt.Printf("="*60 + "\n")
+	fmt.Print(strings.Repeat("=", 60) + "\n")
 	
 	// Create producers
 	cd.producers = make([]*DemoProducer, cd.config.NumProducers)
@@ -306,7 +307,7 @@ func (cd *ComprehensiveDemo) RunDemo() error {
 	cd.mu.Unlock()
 	
 	fmt.Printf("🎯 Starting Comprehensive Demo\n")
-	fmt.Printf("="*60 + "\n")
+	fmt.Print(strings.Repeat("=", 60) + "\n")
 	
 	ctx, cancel := context.WithTimeout(context.Background(), cd.config.Duration+time.Minute)
 	defer cancel()
@@ -748,9 +749,9 @@ func (cd *ComprehensiveDemo) GenerateReport() {
 	cd.currentPhase = "reporting"
 	cd.mu.Unlock()
 	
-	fmt.Printf("\n" + "="*80 + "\n")
+	fmt.Print("\n" + strings.Repeat("=", 80) + "\n")
 	fmt.Printf("📈 COMPREHENSIVE DEMO REPORT\n")
-	fmt.Printf("="*80 + "\n")
+	fmt.Print(strings.Repeat("=", 80) + "\n")
 	
 	totalDuration := time.Since(cd.metrics.startTime)
 	
@@ -787,7 +788,7 @@ func (cd *ComprehensiveDemo) GenerateReport() {
 	// Final Assessment
 	cd.performFinalAssessment()
 	
-	fmt.Printf("="*80 + "\n")
+	fmt.Print(strings.Repeat("=", 80) + "\n")
 	fmt.Printf("✅ Comprehensive Demo Report Complete\n")
 }
 

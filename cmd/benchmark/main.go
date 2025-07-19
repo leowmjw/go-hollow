@@ -165,9 +165,9 @@ func (mc *MetricsCollector) PrintReport() {
 	
 	totalDuration := time.Since(mc.startTime)
 	
-	fmt.Printf("\n" + strings.Repeat("=", 60) + "\n")
+	fmt.Print("\n" + strings.Repeat("=", 60) + "\n")
 	fmt.Printf("BENCHMARK REPORT\n")
-	fmt.Printf(strings.Repeat("=", 60) + "\n")
+	fmt.Print(strings.Repeat("=", 60) + "\n")
 	fmt.Printf("Total Events:     %d\n", mc.totalEvents)
 	fmt.Printf("Total Cycles:     %d\n", mc.totalCycles)
 	fmt.Printf("Total Duration:   %v\n", totalDuration)
@@ -218,7 +218,7 @@ func (mc *MetricsCollector) PrintReport() {
 		fmt.Println()
 	}
 	
-	fmt.Printf(strings.Repeat("=", 60) + "\n")
+	fmt.Print(strings.Repeat("=", 60) + "\n")
 }
 
 // ConsumerTracker tracks consumer performance

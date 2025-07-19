@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -121,9 +122,9 @@ func (mc *MetricsCollector) GenerateDetailedReport() {
 	
 	totalDuration := time.Since(mc.startTime)
 	
-	fmt.Printf("\n" + "="*80 + "\n")
+	fmt.Print("\n" + strings.Repeat("=", 80) + "\n")
 	fmt.Printf("COMPREHENSIVE METRICS REPORT\n")
-	fmt.Printf("="*80 + "\n")
+	fmt.Print(strings.Repeat("=", 80) + "\n")
 	
 	// Basic Statistics
 	fmt.Printf("Basic Statistics:\n")
@@ -245,7 +246,7 @@ func (mc *MetricsCollector) GenerateDetailedReport() {
 	// Export metrics to JSON
 	mc.exportMetricsToJSON()
 	
-	fmt.Printf("="*80 + "\n")
+	fmt.Print(strings.Repeat("=", 80) + "\n")
 }
 
 func (mc *MetricsCollector) printTimeSeriesDistribution(name string, data []int64) {
@@ -494,7 +495,6 @@ func main() {
 	
 	for eventCount < totalEvents {
 		// Calculate time offset based on normal distribution
-		progress := float64(eventCount) / float64(totalEvents)
 		elapsed := time.Since(startTime)
 		
 		if elapsed >= duration {

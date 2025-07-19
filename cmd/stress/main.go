@@ -98,9 +98,9 @@ func (sm *StressMetrics) PrintReport() {
 	
 	totalDuration := time.Since(sm.startTime)
 	
-	fmt.Printf("\n" + "="*70 + "\n")
+	fmt.Print("\n" + strings.Repeat("=", 70) + "\n")
 	fmt.Printf("STRESS TEST REPORT\n")
-	fmt.Printf("="*70 + "\n")
+	fmt.Print(strings.Repeat("=", 70) + "\n")
 	fmt.Printf("Configuration:\n")
 	fmt.Printf("  Producers:        %d\n", NumProducers)
 	fmt.Printf("  Consumers:        %d\n", NumConsumers)
@@ -182,7 +182,7 @@ func (sm *StressMetrics) PrintReport() {
 	fmt.Printf("  Cycles/Second:    %.2f\n", float64(atomic.LoadInt64(&sm.producerCycles))/totalDuration.Seconds())
 	fmt.Printf("  Refreshes/Second: %.2f\n", float64(atomic.LoadInt64(&sm.consumerRefreshes))/totalDuration.Seconds())
 	
-	fmt.Printf("="*70 + "\n")
+	fmt.Print(strings.Repeat("=", 70) + "\n")
 }
 
 // StressProducer manages a single producer's stress testing
@@ -213,8 +213,6 @@ func NewStressProducer(id int, blob *memblob.Store, metrics *StressMetrics, logg
 func (sp *StressProducer) RunStress(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	
-	eventTypes := []string{"login", "logout", "click", "purchase", "view", "search", "download", "upload"}
-	
 	for i := 0; i < EventsPerProducer; i++ {
 		select {
 		case <-ctx.Done():
@@ -229,16 +227,6 @@ func (sp *StressProducer) RunStress(ctx context.Context, wg *sync.WaitGroup) {
 		version, err := sp.producer.RunCycle(func(ws hollow.WriteState) error {
 			for j := 0; j < batchSize; j++ {
 				eventID := fmt.Sprintf("producer_%d_event_%d_%d", sp.id, i, j)
-				event := map[string]any{
-					"id":         eventID,
-					"type":       eventTypes[rand.Intn(len(eventTypes))],
-					"producer":   sp.id,
-					"batch":      i,
-					"timestamp":  time.Now().Unix(),
-					"data":       rand.Float64() * 1000,
-					"user_id":    fmt.Sprintf("user_%d", rand.Intn(10000)),
-					"session_id": fmt.Sprintf("session_%d", rand.Intn(1000)),
-				}
 				
 				if err := ws.Add(eventID); err != nil {
 					return fmt.Errorf("failed to add event %s: %w", eventID, err)
