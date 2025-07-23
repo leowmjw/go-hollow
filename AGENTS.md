@@ -58,17 +58,30 @@ Hollow-Go is a Go implementation of the core Hollow producer/consumer libraries,
 **Solution**: Use `map[string]any` for data storage and convert keys using `fmt.Sprintf("%v", key)`
 **Pattern**: Always prefer JSON-serializable types for data interchange
 
-### 2. Atomic State Management
+### 2. Cap'n Proto Serialization
+**Problem**: Nested data structures in JSON don't map cleanly to Cap'n Proto format
+**Solution**: 
+- Use a flattening approach when deserializing nested maps from Cap'n Proto
+- Store original JSON structure for reference during deserialization
+- Handle boolean values correctly with proper type markers
+- Ensure consistent handling of null/nil values across serialization formats
+
+**Pattern**: 
+- For complex data structures, consider using a two-phase approach: serialize to JSON first, then to Cap'n Proto
+- When deserializing, extract and merge nested maps to preserve the original data structure
+- Add detailed logging during development to track data structure transformations
+
+### 3. Atomic State Management
 **Problem**: Consumer needs lock-free atomic updates
 **Solution**: Use `atomic.Value` to store `ReadState` implementations
 **Pattern**: Store concrete types implementing interfaces in `atomic.Value`
 
-### 3. Thread Safety Patterns
+### 4. Thread Safety Patterns
 - **Producer**: `sync.RWMutex` for write operations (staging, committing)
 - **Consumer**: `atomic.Value` for state swaps, `sync.RWMutex` for individual ReadState access
 - **Blob Store**: `sync.RWMutex` for concurrent access to internal maps
 
-### 4. Functional Options Pattern
+### 5. Functional Options Pattern
 ```go
 // Good pattern for configuration
 func WithBlobStager(stager BlobStager) ProducerOpt {
@@ -84,11 +97,49 @@ producer := NewProducer(
 )
 ```
 
-### 5. Interface Design
+### 6. Interface Design
 - Keep interfaces small and focused (single responsibility)
 - Use `context.Context` for cancellation and timeouts
 - Return errors for all operations that can fail
 - Prefer `any` over `interface{}` for Go 1.18+
+
+## Critical Changes Needed
+
+### 1. Cap'n Proto Implementation
+
+**Current Status**:
+- Basic Cap'n Proto serialization/deserialization is working for simple test cases
+- Tests are passing but implementation relies on storing original JSON data
+- Boolean values are properly handled with type markers
+- Nested data structures are flattened during deserialization
+
+**Remaining Work**:
+1. **Remove Temporary Workarounds**:
+   - Replace the temporary solution that stores original JSON with a proper Cap'n Proto schema
+   - Remove debug logging statements once implementation is stable
+
+2. **Direct Serialization**:
+   - Implement direct Go struct to Cap'n Proto serialization without JSON as intermediate step
+   - Define proper Cap'n Proto schemas for all data types used in the project
+
+3. **Delta Support**:
+   - Extend Cap'n Proto serialization to handle delta updates efficiently
+   - Ensure `DeltaConsumer.RefreshWithDelta` properly applies deltas from Cap'n Proto format
+   - Implement proper delta encoding/decoding in Cap'n Proto format
+
+4. **Performance Optimization**:
+   - Benchmark Cap'n Proto vs JSON serialization performance
+   - Optimize memory usage during serialization/deserialization
+   - Consider using Cap'n Proto's zero-copy features where appropriate
+
+5. **Error Handling**:
+   - Improve error messages for Cap'n Proto serialization failures
+   - Add graceful fallbacks when Cap'n Proto deserialization fails
+
+6. **Testing**:
+   - Add more comprehensive tests for complex nested structures
+   - Test edge cases like empty maps, nil values, and special characters
+   - Add performance benchmarks comparing JSON and Cap'n Proto implementations
 
 ## Testing Strategy
 
