@@ -3,9 +3,11 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"capnproto.org/go/capnp/v3"
+	delta "github.com/leowmjw/go-hollow/generated/go/delta/schemas"
 )
 
 // SerializationMode determines how data is serialized and accessed
@@ -25,8 +27,14 @@ type Serializer interface {
 	// Serialize converts WriteState data to bytes for blob storage
 	Serialize(ctx context.Context, writeState *WriteState) ([]byte, error)
 	
+	// SerializeDelta converts a DeltaSet to bytes for efficient delta storage
+	SerializeDelta(ctx context.Context, deltaSet *DeltaSet) ([]byte, error)
+	
 	// Deserialize converts blob bytes back to accessible data format
 	Deserialize(ctx context.Context, data []byte) (DeserializedData, error)
+	
+	// DeserializeDelta converts delta blob bytes to DeltaSet
+	DeserializeDelta(ctx context.Context, data []byte) (*DeltaSet, error)
 	
 	// Mode returns the serialization mode
 	Mode() SerializationMode
@@ -93,6 +101,17 @@ func (s *TraditionalSerializer) Deserialize(ctx context.Context, data []byte) (D
 	result.data["default"] = []interface{}{string(data)}
 	
 	return result, nil
+}
+
+func (s *TraditionalSerializer) SerializeDelta(ctx context.Context, deltaSet *DeltaSet) ([]byte, error) {
+	// Traditional mode doesn't optimize for deltas, falls back to basic serialization
+	serialized := fmt.Sprintf("DeltaSet:%v", deltaSet)
+	return []byte(serialized), nil
+}
+
+func (s *TraditionalSerializer) DeserializeDelta(ctx context.Context, data []byte) (*DeltaSet, error) {
+	// Traditional mode creates empty delta set (not optimized)
+	return NewDeltaSet(), nil
 }
 
 // TraditionalData implements DeserializedData for traditional mode
@@ -170,6 +189,45 @@ func (s *CapnProtoSerializer) Deserialize(ctx context.Context, data []byte) (Des
 	return result, nil
 }
 
+func (s *CapnProtoSerializer) SerializeDelta(ctx context.Context, deltaSet *DeltaSet) ([]byte, error) {
+	// Create Cap'n Proto message for efficient delta storage
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Cap'n Proto delta message: %w", err)
+	}
+	
+	// This would serialize the delta set using a Cap'n Proto schema
+	// For now, use a simple approach
+	err = s.serializeDeltaToCapnProto(deltaSet, seg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize delta to Cap'n Proto: %w", err)
+	}
+	
+	// Marshal to bytes with packed encoding for compression
+	data, err := msg.MarshalPacked()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal packed Cap'n Proto delta: %w", err)
+	}
+	
+	return data, nil
+}
+
+func (s *CapnProtoSerializer) DeserializeDelta(ctx context.Context, data []byte) (*DeltaSet, error) {
+	// Unmarshal packed Cap'n Proto delta
+	msg, err := capnp.UnmarshalPacked(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal packed Cap'n Proto delta: %w", err)
+	}
+	
+	// Convert back to DeltaSet
+	deltaSet, err := s.deserializeDeltaFromCapnProto(msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize delta from Cap'n Proto: %w", err)
+	}
+	
+	return deltaSet, nil
+}
+
 func (s *CapnProtoSerializer) serializeWriteStateToCapnProto(writeState *WriteState, seg *capnp.Segment) error {
 	// This would contain the logic to convert WriteState data to Cap'n Proto structures
 	// For now, this is a placeholder that demonstrates the integration point
@@ -181,6 +239,145 @@ func (s *CapnProtoSerializer) serializeWriteStateToCapnProto(writeState *WriteSt
 	// 4. Set the root pointer to the serialized data
 	
 	return nil // Placeholder - actual implementation would populate the segment
+}
+
+func (s *CapnProtoSerializer) serializeDeltaToCapnProto(deltaSet *DeltaSet, seg *capnp.Segment) error {
+	// Import the generated delta schema
+	deltaSchema, err := delta.NewRootDeltaSet(seg)
+	if err != nil {
+		return fmt.Errorf("failed to create delta set root: %w", err)
+	}
+	
+	// Set metadata
+	deltaSchema.SetOptimized(deltaSet.optimized)
+	deltaSchema.SetChangeCount(uint32(deltaSet.changeCount))
+	
+	// Create list of type deltas
+	typeDeltas, err := deltaSchema.NewDeltas(int32(len(deltaSet.Deltas)))
+	if err != nil {
+		return fmt.Errorf("failed to create deltas list: %w", err)
+	}
+	
+	i := 0
+	for typeName, typeDelta := range deltaSet.Deltas {
+		typeDeltaCapnp := typeDeltas.At(i)
+		typeDeltaCapnp.SetTypeName(typeName)
+		
+		// Create list of delta records for this type
+		records, err := typeDeltaCapnp.NewRecords(int32(len(typeDelta.Records)))
+		if err != nil {
+			return fmt.Errorf("failed to create records list for type %s: %w", typeName, err)
+		}
+		
+		for j, record := range typeDelta.Records {
+			recordCapnp := records.At(j)
+			
+			// Set operation
+			switch record.Operation {
+			case DeltaAdd:
+				recordCapnp.SetOperation(delta.DeltaOperation_add)
+			case DeltaUpdate:
+				recordCapnp.SetOperation(delta.DeltaOperation_update)
+			case DeltaDelete:
+				recordCapnp.SetOperation(delta.DeltaOperation_delete)
+			}
+			
+			recordCapnp.SetOrdinal(uint32(record.Ordinal))
+			
+			// Serialize the value if it's not a delete operation
+			if record.Operation != DeltaDelete && record.Value != nil {
+				valueData, err := s.serializeValue(record.Value)
+				if err != nil {
+					return fmt.Errorf("failed to serialize value for record %d: %w", record.Ordinal, err)
+				}
+				recordCapnp.SetValue(valueData)
+			}
+		}
+		
+		i++
+	}
+	
+	return nil
+}
+
+// serializeValue serializes a value to bytes using JSON for now
+// In a production implementation, this could use more efficient serialization
+func (s *CapnProtoSerializer) serializeValue(value interface{}) ([]byte, error) {
+	return json.Marshal(value)
+}
+
+func (s *CapnProtoSerializer) deserializeDeltaFromCapnProto(msg *capnp.Message) (*DeltaSet, error) {
+	// Parse the Cap'n Proto delta message
+	deltaRoot, err := delta.ReadRootDeltaSet(msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read delta set root: %w", err)
+	}
+	
+	deltaSet := NewDeltaSet()
+	deltaSet.optimized = deltaRoot.Optimized()
+	deltaSet.changeCount = int(deltaRoot.ChangeCount())
+	
+	// Parse type deltas
+	typeDeltas, err := deltaRoot.Deltas()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deltas list: %w", err)
+	}
+	
+	for i := 0; i < typeDeltas.Len(); i++ {
+		typeDelta := typeDeltas.At(i)
+		typeName, err := typeDelta.TypeName()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get type name for delta %d: %w", i, err)
+		}
+		
+		records, err := typeDelta.Records()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get records for type %s: %w", typeName, err)
+		}
+		
+		// Create TypeDelta
+		td := &TypeDelta{
+			TypeName: typeName,
+			Records:  make([]DeltaRecord, records.Len()),
+		}
+		
+		for j := 0; j < records.Len(); j++ {
+			record := records.At(j)
+			
+			// Convert operation
+			var operation DeltaOperation
+			switch record.Operation() {
+			case delta.DeltaOperation_add:
+				operation = DeltaAdd
+			case delta.DeltaOperation_update:
+				operation = DeltaUpdate
+			case delta.DeltaOperation_delete:
+				operation = DeltaDelete
+			}
+			
+			// Deserialize value if present
+			var value interface{}
+			if operation != DeltaDelete {
+				valueData, err := record.Value()
+				if err == nil && len(valueData) > 0 {
+					err = json.Unmarshal(valueData, &value)
+					if err != nil {
+						return nil, fmt.Errorf("failed to deserialize value for record %d: %w", j, err)
+					}
+				}
+			}
+			
+			td.Records[j] = DeltaRecord{
+				Operation: operation,
+				Ordinal:   int(record.Ordinal()),
+				Value:     value,
+			}
+		}
+		
+		deltaSet.Deltas[typeName] = td
+	}
+	
+	return deltaSet, nil
 }
 
 // CapnProtoData implements DeserializedData for zero-copy mode
@@ -328,6 +525,43 @@ func (s *HybridSerializer) detectSerializationMode(data []byte) SerializationMod
 	}
 	
 	return TraditionalMode
+}
+
+func (s *HybridSerializer) SerializeDelta(ctx context.Context, deltaSet *DeltaSet) ([]byte, error) {
+	// Choose serialization mode based on delta characteristics
+	mode := s.determineSerializationModeForDelta(deltaSet)
+	
+	switch mode {
+	case ZeroCopyMode:
+		return s.capnproto.SerializeDelta(ctx, deltaSet)
+	case TraditionalMode:
+		return s.traditional.SerializeDelta(ctx, deltaSet)
+	default:
+		return s.traditional.SerializeDelta(ctx, deltaSet)
+	}
+}
+
+func (s *HybridSerializer) DeserializeDelta(ctx context.Context, data []byte) (*DeltaSet, error) {
+	// Detect format from data header or metadata
+	mode := s.detectSerializationMode(data)
+	
+	switch mode {
+	case ZeroCopyMode:
+		return s.capnproto.DeserializeDelta(ctx, data)
+	case TraditionalMode:
+		return s.traditional.DeserializeDelta(ctx, data)
+	default:
+		return s.traditional.DeserializeDelta(ctx, data)
+	}
+}
+
+func (s *HybridSerializer) determineSerializationModeForDelta(deltaSet *DeltaSet) SerializationMode {
+	// Use zero-copy for deltas with significant change count
+	if deltaSet.GetChangeCount() > 100 {
+		return ZeroCopyMode
+	}
+	
+	return s.defaultMode
 }
 
 // SerializerFactory creates appropriate serializers based on configuration

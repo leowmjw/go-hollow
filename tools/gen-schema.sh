@@ -49,6 +49,7 @@ generate_go() {
     # Generate bindings for each schema file individually
     local schemas=(
         "common:common"
+        "delta:delta"
         "movie_dataset:movie"
         "commerce_dataset:commerce"
         "iot_dataset:iot"

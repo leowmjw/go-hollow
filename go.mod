@@ -4,12 +4,14 @@ go 1.24.5
 
 require (
 	capnproto.org/go/capnp/v3 v3.1.0-alpha.1
+	github.com/leowmjw/go-hollow/generated/go/delta v0.0.0-00010101000000-000000000000
 	github.com/leowmjw/go-hollow/generated/go/movie v0.0.0-00010101000000-000000000000
 	github.com/minio/minio-go/v7 v7.0.95
 )
 
 replace (
 	github.com/leowmjw/go-hollow/generated/go/common => ./generated/go/common
+	github.com/leowmjw/go-hollow/generated/go/delta => ./generated/go/delta
 	github.com/leowmjw/go-hollow/generated/go/movie => ./generated/go/movie
 )
 

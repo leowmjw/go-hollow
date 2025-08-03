@@ -1,19 +1,74 @@
-# Go-Hollow Expert Review and Suggestions
+# Plan for Primary Key Support in the Producer API
 
-**Reviewer:** Gemini Pro - Aug 02, 2025
-**Expertise:** Go, Cap'n Proto, High-Performance Data Systems
+This document outlines the plan to introduce primary key support at the low-level `Producer` API. This is a prerequisite for correctly tracking record identity, which enables proper delta and diff functionality.
 
-This document contains an expert review of the go-hollow codebase, focusing on Go and Cap'n Proto best practices. The following points detail identified weaknesses and suggestions for improvement in the current implementation (Phases 1-5).
+## 1. Introduce `WithPrimaryKey` Producer Option
 
-## 1. Critical Race Condition in Producer
+A new `ProducerOption` will be created to allow users to explicitly declare a primary key for any given type. This provides a clean, idiomatic, and self-documenting way to configure record identity.
 
-**Observation**:
-The `Producer` struct is not safe for concurrent use. The `RunCycle` method reads and writes shared fields, specifically `currentVersion` and `lastDataHash`, without any synchronization mechanism like a mutex. 
+**API Definition (`producer/producer.go`):**
+```go
+// WithPrimaryKey sets the primary key field for a given type.
+func WithPrimaryKey(typeName string, fieldName string) ProducerOption {
+    return func(p *Producer) {
+        if p.primaryKeys == nil {
+            p.primaryKeys = make(map[string]string)
+        }
+        p.primaryKeys[typeName] = fieldName
+    }
+}
+```
 
-**Risk**:
-If two or more goroutines execute `RunCycle` concurrently, a classic race condition can occur. Both goroutines could read the same `currentVersion`, increment it, and write it back. This would result in a "lost update," where one of the producer cycles is effectively ignored, leading to data inconsistency and a corrupted hollow dataset. The integrity of the versioning and data hashing is compromised.
+## 2. Update the `Producer` Struct
 
-**Recommendation**:
+The `Producer` struct will be modified to store the primary key configurations.
+
+**Struct Definition (`producer/producer.go`):**
+```go
+type Producer struct {
+    // ... existing fields
+    primaryKeys              map[string]string
+    // ... existing fields
+}
+```
+
+## 3. Connect Producer to the WriteStateEngine
+
+The `Producer` will pass the primary key configuration down to the `WriteStateEngine` during its initialization. This ensures the component responsible for writing data is aware of the identity fields.
+
+**Instantiation (`producer/producer.go`):**
+```go
+func NewProducer(opts ...ProducerOption) *Producer {
+    p := &Producer{
+        // ... other initializations
+        primaryKeys: make(map[string]string),
+    }
+
+    for _, opt := range opts {
+        opt(p)
+    }
+
+    // Pass the configured primary keys to the write engine
+    p.writeEngine = internal.NewWriteStateEngine(p.primaryKeys)
+    
+    return p
+}
+```
+
+## 4. Enhance `WriteStateEngine` for Identity Management
+
+The core logic change will be in the `internal.WriteStateEngine`. It will now manage record identity based on the provided primary keys.
+
+**Required Changes (`internal/write_engine.go`):**
+
+1.  **Store Primary Key Map**: The `WriteStateEngine` will store the `map[string]string` of primary keys.
+2.  **Modify `Add` Logic**: The `Add(object)` method will be enhanced:
+    *   It will check if the object's type has a primary key defined.
+    *   If yes, it will use reflection to extract the value of the primary key field.
+    *   It will use this key to look up an existing ordinal for the record. If an ordinal exists, the record is treated as an **update**. If not, it's an **add**, and a new ordinal is assigned.
+3.  **Maintain Identity Map**: The engine will maintain a mapping of `map[type]->map[primaryKeyValue]->ordinal` to track identities across cycles.
+
+This API-first approach ensures that the core data production layer correctly handles record identity, which will enable accurate delta generation and diffing capabilities throughout the system.
 To resolve this, a `sync.Mutex` should be added to the `Producer` struct. This mutex must be used to protect the critical sections in all methods that access or modify the shared state (`currentVersion`, `lastDataHash`, etc.). Specifically, `RunCycle`, `RunCycleWithError`, and `Restore` should be locked to ensure that state transitions are atomic.
 
 ## 2. Unhandled Errors in `RunCycle`

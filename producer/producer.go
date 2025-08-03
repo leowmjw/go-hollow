@@ -25,6 +25,8 @@ type Producer struct {
 	currentVersion           int64
 	lastSnapshotVersion      int64
 	lastDataHash             uint64
+	// Primary key configuration for identity management
+	primaryKeys              map[string]string
 	// Zero-copy serialization support
 	serializer               internal.Serializer
 }
@@ -87,6 +89,17 @@ func WithNumStatesBetweenSnapshots(count int) ProducerOption {
 	}
 }
 
+// WithPrimaryKey sets the primary key field for a given type.
+// This enables proper record identity tracking for delta and diff operations.
+func WithPrimaryKey(typeName string, fieldName string) ProducerOption {
+	return func(p *Producer) {
+		if p.primaryKeys == nil {
+			p.primaryKeys = make(map[string]string)
+		}
+		p.primaryKeys[typeName] = fieldName
+	}
+}
+
 // NewProducer creates a new Producer
 func NewProducer(opts ...ProducerOption) *Producer {
 	p := &Producer{
@@ -96,11 +109,15 @@ func NewProducer(opts ...ProducerOption) *Producer {
 		typeResharding:            false,
 		targetMaxTypeShardSize:    1000,
 		numStatesBetweenSnapshots: 5,
+		primaryKeys:               make(map[string]string),
 	}
 	
 	for _, opt := range opts {
 		opt(p)
 	}
+	
+	// Pass the configured primary keys to the write engine
+	p.writeEngine.SetPrimaryKeys(p.primaryKeys)
 	
 	return p
 }
@@ -168,6 +185,9 @@ func (p *Producer) runCycleInternal(ctx context.Context, populate func(*internal
 	// Create read state for validation
 	readState := internal.NewReadState(newVersion)
 	
+	// Calculate deletes (records removed by omission) before validation
+	p.writeEngine.CalculateDeletes()
+	
 	// Run validation
 	for _, validator := range p.validators {
 		result := validator.Validate(readState)
@@ -224,7 +244,14 @@ func (p *Producer) calculateDataHash(data map[string][]interface{}) uint64 {
 		values := data[key]
 		binary.Write(h, binary.LittleEndian, int64(len(values)))
 		for _, value := range values {
-			h.Write([]byte(fmt.Sprintf("%v", value)))
+			// Handle RecordInfo objects for primary key enabled types
+			if recordInfo, ok := value.(*internal.RecordInfo); ok {
+				// Hash the actual value, not the metadata
+				h.Write([]byte(fmt.Sprintf("%v", recordInfo.Value)))
+			} else {
+				// Traditional case
+				h.Write([]byte(fmt.Sprintf("%v", value)))
+			}
 		}
 	}
 	
@@ -248,29 +275,58 @@ func (p *Producer) performResharding(writeState *internal.WriteState) {
 }
 
 func (p *Producer) storeBlob(ctx context.Context, version int64, writeState *internal.WriteState) error {
-	// Use pluggable serialization (supports both traditional and zero-copy modes)
 	serializer := p.getSerializer()
-	serializedData, err := serializer.Serialize(ctx, writeState)
-	if err != nil {
-		return fmt.Errorf("failed to serialize data: %w", err)
-	}
 	
 	// Determine blob type
 	var blobType blob.BlobType
 	var fromVersion int64
+	var serializedData []byte
+	var err error
 	
 	if p.shouldCreateSnapshot(version) {
 		blobType = blob.SnapshotBlob
 		p.lastSnapshotVersion = version
+		
+		// Serialize full state for snapshot
+		serializedData, err = serializer.Serialize(ctx, writeState)
+		if err != nil {
+			return fmt.Errorf("failed to serialize snapshot: %w", err)
+		}
 	} else {
 		blobType = blob.DeltaBlob
 		fromVersion = p.currentVersion
+		
+		// Get delta set and use efficient delta serialization
+		deltaSet := p.writeEngine.GetCurrentDelta()
+		
+		if deltaSet.IsEmpty() {
+			// No changes - create empty delta
+			serializedData = []byte{}
+		} else {
+			// Serialize only the changes
+			serializedData, err = serializer.SerializeDelta(ctx, deltaSet)
+			if err != nil {
+				return fmt.Errorf("failed to serialize delta: %w", err)
+			}
+		}
 	}
 	
 	// Calculate hash from raw data for consistency across serialization modes
 	data := writeState.GetData()
 	
 	// Create blob with serialized data
+	metadata := map[string]string{
+		"serialization_mode": fmt.Sprintf("%d", serializer.Mode()),
+	}
+	
+	// Add delta statistics for monitoring
+	if blobType == blob.DeltaBlob {
+		deltaSet := p.writeEngine.GetCurrentDelta()
+		metadata["delta_change_count"] = fmt.Sprintf("%d", deltaSet.GetChangeCount())
+		metadata["delta_type_count"] = fmt.Sprintf("%d", len(deltaSet.Deltas))
+		metadata["is_delta_optimized"] = "true"
+	}
+	
 	blobData := &blob.Blob{
 		Type:        blobType,
 		Version:     version,
@@ -278,10 +334,7 @@ func (p *Producer) storeBlob(ctx context.Context, version int64, writeState *int
 		ToVersion:   version,
 		Data:        serializedData,
 		Checksum:    p.calculateDataHash(data),
-		// Add serialization mode metadata for consumer
-		Metadata: map[string]string{
-			"serialization_mode": fmt.Sprintf("%d", serializer.Mode()),
-		},
+		Metadata:    metadata,
 	}
 	
 	// Store blob

@@ -44,10 +44,12 @@ func main() {
 	announcer := blob.NewGoroutineAnnouncer()
 	defer announcer.Close() // Important cleanup
 
-	// Create producer
+	// Create producer with primary key support for efficient deltas
 	prod := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcer),
+		producer.WithPrimaryKey("Movie", "ID"),        // Movies identified by ID field
+		producer.WithPrimaryKey("Rating", "MovieID"),  // Ratings identified by MovieID+UserID composite
 	)
 
 	// Load and produce movie data
