@@ -114,11 +114,11 @@ func runProducer(storeType, dataFile string, verbose bool) {
 	announcer := blob.NewGoroutineAnnouncer()
 	defer announcer.Close()
 
-	// Create producer
+	// Create producer with realistic delta configuration
 	prod := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcer),
-		producer.WithNumStatesBetweenSnapshots(1), // Create snapshot for every version
+		producer.WithNumStatesBetweenSnapshots(5), // Snapshot every 5 versions for realistic delta usage
 	)
 
 	// Run a cycle with test data
