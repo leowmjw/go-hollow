@@ -15,7 +15,7 @@ hollow-cli [command] [options]
 Display help information about available commands and options.
 
 ```bash
-./hollow-cli help
+hollow-cli help
 ```
 
 ### `schema`
@@ -23,7 +23,7 @@ Display help information about available commands and options.
 Validate schema files in Cap'n Proto or legacy DSL format.
 
 ```bash
-./hollow-cli schema -data=<schema-file-path> [-verbose]
+hollow-cli schema -data=<schema-file-path> [-verbose]
 ```
 
 Options:
@@ -32,7 +32,7 @@ Options:
 
 Example:
 ```bash
-./hollow-cli schema -data=fixtures/schema/test_schema.capnp -verbose
+hollow-cli schema -data=fixtures/schema/test_schema.capnp -verbose
 ```
 
 ### `produce`
@@ -40,7 +40,7 @@ Example:
 Run a producer cycle with test data.
 
 ```bash
-./hollow-cli produce -data=<data-file-path> [-store=<store-type>] [-verbose]
+hollow-cli produce -data=<data-file-path> [-store=<store-type>] [-verbose]
 ```
 
 Options:
@@ -50,7 +50,7 @@ Options:
 
 Example:
 ```bash
-./hollow-cli produce -data=data.json -store=memory
+hollow-cli produce -data=data.json -store=memory
 ```
 
 ### `consume`
@@ -58,7 +58,7 @@ Example:
 Run a consumer to read data from a specific version.
 
 ```bash
-./hollow-cli consume -version=<version> [-store=<store-type>] [-verbose]
+hollow-cli consume -version=<version> [-store=<store-type>] [-verbose]
 ```
 
 Options:
@@ -68,7 +68,7 @@ Options:
 
 Example:
 ```bash
-./hollow-cli consume -version=1 -verbose
+hollow-cli consume -version=1 -verbose
 ```
 
 ### `inspect`
@@ -76,7 +76,7 @@ Example:
 Inspect a specific version of the data.
 
 ```bash
-./hollow-cli inspect -version=<version> [-store=<store-type>] [-verbose]
+hollow-cli inspect -version=<version> [-store=<store-type>] [-verbose]
 ```
 
 Options:
@@ -86,7 +86,7 @@ Options:
 
 Example:
 ```bash
-./hollow-cli inspect -store=memory -version=1
+hollow-cli inspect -store=memory -version=1
 ```
 
 ### `diff`
@@ -94,7 +94,7 @@ Example:
 Compare two versions of the data.
 
 ```bash
-./hollow-cli diff -version=<from-version> -target=<to-version> [-store=<store-type>] [-verbose]
+hollow-cli diff -version=<from-version> -target=<to-version> [-store=<store-type>] [-verbose]
 ```
 
 Options:
@@ -105,7 +105,7 @@ Options:
 
 Example:
 ```bash
-./hollow-cli diff -store=memory -version=1 -target=2
+hollow-cli diff -store=memory -version=1 -target=2
 ```
 
 ## Schema Validation Examples
@@ -113,7 +113,7 @@ Example:
 ### Valid Cap'n Proto Schema
 
 ```bash
-./hollow-cli schema -data=fixtures/schema/test_schema.capnp -verbose
+hollow-cli schema -data=fixtures/schema/test_schema.capnp -verbose
 ```
 
 Example output:
@@ -135,7 +135,7 @@ Schema: Person (Type: 0)
 ### Invalid Schema
 
 ```bash
-./hollow-cli schema -data=fixtures/schema/invalid_schema.txt -verbose
+hollow-cli schema -data=fixtures/schema/invalid_schema.txt -verbose
 ```
 
 Example output:
@@ -149,7 +149,7 @@ Error parsing schema file: invalid Cap'n Proto schema: missing @0x version ident
 ### Using S3 Storage
 
 ```bash
-./hollow-cli produce -data=data.json -store=s3 -endpoint=localhost:9000 -bucket=hollow-test
+hollow-cli produce -data=data.json -store=s3 -endpoint=localhost:9000 -bucket=hollow-test
 ```
 
 ### Schema Evolution
@@ -158,10 +158,10 @@ When evolving schemas, use the diff command to see changes between versions:
 
 ```bash
 # Produce data with new schema
-./hollow-cli produce -data=new_data.json -store=memory
+hollow-cli produce -data=new_data.json -store=memory
 
 # Compare with previous version
-./hollow-cli diff -store=memory -version=2 -target=1
+hollow-cli diff -store=memory -version=2 -target=1
 ```
 
 ## Troubleshooting

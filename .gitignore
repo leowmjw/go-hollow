@@ -5,6 +5,6 @@
 .idea
 
 # Ignore binaries
-hollow-cli
+/hollow-cli
 
 

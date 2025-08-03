@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1,
+    "name": "Test User",
+    "email": "test@example.com",
+    "phone": "+1-555-0001",
+    "address": {
+      "street": "123 Test St",
+      "city": "Test City",
+      "state": "TS",
+      "zipCode": "12345",
+      "country": "USA"
+    },
+    "birthDate": 631152000,
+    "isActive": true
+  }
+]

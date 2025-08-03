@@ -118,6 +118,7 @@ func runProducer(storeType, dataFile string, verbose bool) {
 	prod := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcer),
+		producer.WithNumStatesBetweenSnapshots(1), // Create snapshot for every version
 	)
 
 	// Run a cycle with test data
@@ -144,6 +145,11 @@ func runProducer(storeType, dataFile string, verbose bool) {
 		fmt.Printf("Announcer subscribers: %d\n", announcer.GetSubscriberCount())
 	} else {
 		fmt.Printf("Version: %d\n", version)
+	}
+
+	// For memory storage, offer interactive mode
+	if storeType == "memory" {
+		runInteractiveMode(blobStore, announcer, prod, version, verbose)
 	}
 }
 

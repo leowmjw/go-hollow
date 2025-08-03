@@ -1,0 +1,47 @@
+[
+  {
+    "id": 1001,
+    "name": "Alice Johnson",
+    "email": "alice@example.com",
+    "phone": "+1-555-0101",
+    "address": {
+      "street": "123 Main St",
+      "city": "New York",
+      "state": "NY",
+      "zipCode": "10001",
+      "country": "USA"
+    },
+    "birthDate": 631152000,
+    "isActive": true
+  },
+  {
+    "id": 1002,
+    "name": "Bob Smith",
+    "email": "bob@example.com",
+    "phone": "+1-555-0102",
+    "address": {
+      "street": "456 Oak Ave",
+      "city": "Los Angeles",
+      "state": "CA",
+      "zipCode": "90210",
+      "country": "USA"
+    },
+    "birthDate": 567993600,
+    "isActive": true
+  },
+  {
+    "id": 1003,
+    "name": "Charlie Brown",
+    "email": "charlie@example.com",
+    "phone": "+1-555-0103",
+    "address": {
+      "street": "789 Pine Rd",
+      "city": "Chicago",
+      "state": "IL",
+      "zipCode": "60601",
+      "country": "USA"
+    },
+    "birthDate": 504921600,
+    "isActive": false
+  }
+]
