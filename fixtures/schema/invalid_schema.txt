@@ -1,0 +1,3 @@
+This is not a valid schema file.
+It doesn't follow any schema format.
+Just random text to test error handling.

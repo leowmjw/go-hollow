@@ -5,7 +5,6 @@
 .idea
 
 # Ignore binaries
-demo
-integration.test
+hollow-cli
 
 
