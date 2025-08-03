@@ -1,4 +1,4 @@
-module github.com/leowmjw/go-hollow
+module github.com/leowmjw/go-hollow/legacy
 
 go 1.24.5
 

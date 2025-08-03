@@ -3,7 +3,7 @@ package hollow
 import (
 	"testing"
 
-	"github.com/leowmjw/go-hollow/internal/memblob"
+	"github.com/leowmjw/go-hollow/legacy/internal/memblob"
 )
 
 func TestConsumerRefreshToVersion(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/leowmjw/go-hollow/internal/memblob"
+	"github.com/leowmjw/go-hollow/legacy/internal/memblob"
 )
 
 func TestFileWatcher_WatchDirectory(t *testing.T) {

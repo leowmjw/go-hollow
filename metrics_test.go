@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/leowmjw/go-hollow/internal/memblob"
+	"github.com/leowmjw/go-hollow/legacy/internal/memblob"
 )
 
 func TestMetricsCollectorInvoked(t *testing.T) {

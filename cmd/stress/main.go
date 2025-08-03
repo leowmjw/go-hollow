@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/leowmjw/go-hollow"
-	"github.com/leowmjw/go-hollow/internal/memblob"
+	"github.com/leowmjw/go-hollow/legacy"
+	"github.com/leowmjw/go-hollow/legacy/internal/memblob"
 )
 
 const (

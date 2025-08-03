@@ -2,8 +2,8 @@ package hollow
 
 import (
 	"context"
-	
-	"github.com/leowmjw/go-hollow/internal/memblob"
+
+	"github.com/leowmjw/go-hollow/legacy/internal/memblob"
 )
 
 // DeltaAwareMemBlobStore wraps a memblob.Store to make it satisfy the DeltaAwareBlobStore interface
@@ -28,14 +28,14 @@ func (d *DeltaAwareMemBlobStore) WriteDelta(ctx context.Context, baseVersion uin
 	if err != nil {
 		return 0, err
 	}
-	
+
 	newVersion := latestVersion + 1
-	
+
 	// Store the delta in the internal storage
 	if err := d.deltaStorage.StoreDelta(baseVersion, newVersion, changes); err != nil {
 		return 0, err
 	}
-	
+
 	return newVersion, nil
 }
 
@@ -51,16 +51,16 @@ func (d *DeltaAwareMemBlobStore) ApplyDelta(ctx context.Context, baseData map[st
 	for k, v := range baseData {
 		result[k] = v
 	}
-	
+
 	// Remove items
 	for _, key := range delta.GetRemoved() {
 		delete(result, key)
 	}
-	
+
 	// Handle changes and additions - we need access to the actual values
 	// In a real implementation, we would use the values from the delta
 	// Here we're simplifying since DataDiff only has keys, not values
-	
+
 	return result, nil
 }
 

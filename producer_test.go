@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/leowmjw/go-hollow/internal/memblob"
+	"github.com/leowmjw/go-hollow/legacy/internal/memblob"
 )
 
 func TestProducerRunsSnapshotCycle(t *testing.T) {

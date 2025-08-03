@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/leowmjw/go-hollow/internal/memblob"
+	"github.com/leowmjw/go-hollow/legacy/internal/memblob"
 )
 
 // BenchmarkReadLatency tests the ≤5µs p99 requirement for primitive lookups

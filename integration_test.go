@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/leowmjw/go-hollow/internal/memblob"
+	"github.com/leowmjw/go-hollow/legacy/internal/memblob"
 )
 
 func TestIntegrationProducerConsumerFlow(t *testing.T) {

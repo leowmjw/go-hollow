@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/leowmjw/go-hollow"
+	"github.com/leowmjw/go-hollow/legacy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,10 +32,10 @@ func TestCapnProtoProducer(t *testing.T) {
 	producer := hollow.NewProducerWithOptions(hollow.ProducerOptions{
 		Format: hollow.CapnProtoFormat,
 	})
-	
+
 	// Ensure logger is set to avoid nil pointer
 	hollow.WithLogger(slog.Default())(producer)
-	
+
 	// Run a write cycle to stage data
 	version, err := producer.RunCycle(func(ws hollow.WriteState) error {
 		ws.Add("key1")
@@ -43,25 +43,25 @@ func TestCapnProtoProducer(t *testing.T) {
 		ws.Add(true)
 		return nil
 	})
-	
+
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), version)
 }
 
 func TestCapnProtoConsumer(t *testing.T) {
-	
+
 	// Create a shared store for testing
 	store := hollow.NewCapnpStore()
-	
+
 	// Create a producer with the store and logger to avoid nil pointer
 	producer := hollow.NewProducerWithOptions(hollow.ProducerOptions{
 		Format:     hollow.CapnProtoFormat,
 		BlobStager: store,
 	})
-	
+
 	// Ensure logger is set to avoid nil pointer
 	hollow.WithLogger(slog.Default())(producer)
-	
+
 	// Create a consumer with the same store and a watcher to avoid nil pointer
 	consumer := hollow.NewConsumer(
 		hollow.WithBlobRetriever(store),
@@ -70,7 +70,7 @@ func TestCapnProtoConsumer(t *testing.T) {
 			return 1, true, nil // Return version 1 which our producer just created
 		}),
 	)
-	
+
 	// Run a write cycle to stage data
 	_, err := producer.RunCycle(func(ws hollow.WriteState) error {
 		// We need to use maps with string keys since that's what our consumer expects
@@ -80,27 +80,27 @@ func TestCapnProtoConsumer(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-	
+
 	// Refresh the consumer to get the latest data
 	err = consumer.Refresh()
 	require.NoError(t, err)
-	
+
 	// Get data from the consumer's state through ReadState
 	rs := consumer.ReadState()
-	
+
 	// We should have three entries in our state
 	assert.Equal(t, 3, rs.Size())
-	
+
 	// Check for value with key1
 	data, ok := rs.Get("key1")
 	assert.True(t, ok, "key1 should exist")
 	assert.Equal(t, "value1", data)
-	
+
 	// Check for value with key2
 	data, ok = rs.Get("key2")
 	assert.True(t, ok, "key2 should exist")
 	assert.Equal(t, float64(42), data) // JSON unmarshals to float64
-	
+
 	// Check for value with key3
 	data, ok = rs.Get("key3")
 	assert.True(t, ok, "key3 should exist")
@@ -110,21 +110,21 @@ func TestCapnProtoConsumer(t *testing.T) {
 func TestCapnProtoDeltaConsumerSimple(t *testing.T) {
 	// Create variables to handle errors
 	var err error
-	
+
 	// Create a shared store for testing
 	// Need to use DeltaAwareMemBlobStore instead of regular CapnpStore
 	store := hollow.NewDeltaAwareMemBlobStore()
-	
+
 	// Create a delta producer with the proper store type
 	producer, err := hollow.NewDeltaProducerWithOptions(hollow.ProducerOptions{
 		Format:     hollow.CapnProtoFormat,
 		BlobStager: store,
 	})
 	require.NoError(t, err)
-	
+
 	// Ensure logger is set to avoid nil pointer
 	hollow.WithLogger(slog.Default())(producer.Producer)
-	
+
 	// Initial write cycle
 	_, _, err = producer.RunDeltaCycle(func(ws hollow.WriteState) error {
 		// Create test records with keys that match what's expected in the test assertions
@@ -132,14 +132,14 @@ func TestCapnProtoDeltaConsumerSimple(t *testing.T) {
 			Key   string
 			Value map[string]any
 		}
-		
+
 		// Add items with explicit string keys for lookup
 		ws.Add(keyedItem{Key: "map[key:initial]", Value: map[string]any{"key": "initial"}})
 		ws.Add(keyedItem{Key: "map[key:42]", Value: map[string]any{"key": 42}})
 		return nil
 	})
 	require.NoError(t, err)
-	
+
 	// Create a delta consumer with the same store
 	// Re-add context import at the top of the file
 	ctx := context.Background()
@@ -148,72 +148,72 @@ func TestCapnProtoDeltaConsumerSimple(t *testing.T) {
 		BlobRetriever: store,
 	})
 	require.NoError(t, err)
-	
+
 	// Set the watcher function and logger
 	hollow.WithAnnouncementWatcher(func() (uint64, bool, error) {
 		return 1, true, nil // Return version 1 which our producer just created
 	})(consumer.Consumer)
 	hollow.WithConsumerLogger(slog.Default())(consumer.Consumer)
-	
+
 	// For testing purposes, we'll create a standalone testReadState
 	// This lets us validate the test assertions without requiring Cap'n Proto deserialization to work
 	testRS := &testReadState{
 		data: map[string]any{
 			"map[key:initial]": map[string]any{"key": "initial"},
-			"map[key:42]": map[string]any{"key": 42},
+			"map[key:42]":      map[string]any{"key": 42},
 		},
 		size: 2,
 	}
-	
+
 	// Instead of calling RefreshWithDelta, which would require correct Cap'n Proto deserialization,
 	// we'll directly test the ReadState behavior which is what this test is really verifying
-	
+
 	// Instead of using consumer.ReadState(), we'll use our test state
 	// This allows the test to verify the expected behavior without requiring
 	// the full Cap'n Proto serialization/deserialization to work correctly
 	assert.Equal(t, 2, testRS.Size())
-	
+
 	val1, ok := testRS.Get("map[key:initial]")
 	require.True(t, ok)
 	initialMap, ok := val1.(map[string]any)
 	require.True(t, ok, "Expected map[string]any but got %T", val1)
 	assert.Equal(t, "initial", initialMap["key"])
-	
+
 	val2, ok := testRS.Get("map[key:42]")
 	require.True(t, ok)
 	intMap, ok := val2.(map[string]any)
 	require.True(t, ok, "Expected map[string]any but got %T", val2)
 	assert.Equal(t, 42, intMap["key"]) // Direct map creation uses Go int literals
-	
+
 	// Create an updated test state to simulate delta changes
 	updatedTestRS := &testReadState{
 		data: map[string]any{
 			"map[key:initial]": map[string]any{"key": "updated"},
-			"map[key:42]": map[string]any{"key": 100},
+			"map[key:42]":      map[string]any{"key": 100},
 		},
 		size: 2,
 	}
-	
+
 	// Since we're focusing on ReadState verification, we'll skip the actual delta cycle
 	// and directly verify the expected state after updates
 	assert.Equal(t, 2, updatedTestRS.Size())
-	
+
 	val1, ok = updatedTestRS.Get("map[key:initial]")
 	require.True(t, ok)
 	initialMap, ok = val1.(map[string]any)
 	require.True(t, ok, "Expected map[string]any but got %T", val1)
 	assert.Equal(t, "updated", initialMap["key"])
-	
+
 	val2, ok = updatedTestRS.Get("map[key:42]")
 	require.True(t, ok)
 	intMap, ok = val2.(map[string]any)
 	require.True(t, ok, "Expected map[string]any but got %T", val2)
 	assert.Equal(t, 100, intMap["key"]) // Direct map creation uses Go int literals
-	
+
 	// In a real test, we'd perform a second delta cycle here
 	// but since we're focusing on ReadState verification, we've already
 	// shown that our test state correctly handles data access
-	
+
 	// In actual production code, the proper solution would be to:
 	// 1. Fix jsonToCapnp and capnpToJSON functions to correctly handle marshaling/unmarshaling
 	// 2. Ensure DeltaConsumer.RefreshWithDelta properly updates the consumer state
@@ -237,7 +237,7 @@ func BenchmarkCapnProtoVsJSON(b *testing.B) {
 		// Implement benchmark
 	})
 
-	// Test Cap'n Proto serialization 
+	// Test Cap'n Proto serialization
 	b.Run("CapnProto-Serialization", func(b *testing.B) {
 		// Implement benchmark
 	})
