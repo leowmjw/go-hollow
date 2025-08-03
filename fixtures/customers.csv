@@ -1,0 +1,31 @@
+id,email,name,city,age,registeredAt
+1001,alice@example.com,"Alice Johnson","New York",28,1577836800
+1002,bob@example.com,"Bob Smith","Los Angeles",35,1577923200
+1003,charlie@example.com,"Charlie Brown","Chicago",42,1578009600
+1004,diana@example.com,"Diana Prince","Houston",29,1578096000
+1005,eve@example.com,"Eve Davis","Phoenix",31,1578182400
+1006,frank@example.com,"Frank Miller","Philadelphia",38,1578268800
+1007,grace@example.com,"Grace Lee","San Antonio",26,1578355200
+1008,henry@example.com,"Henry Wilson","San Diego",44,1578441600
+1009,ivy@example.com,"Ivy Chen","Dallas",33,1578528000
+1010,jack@example.com,"Jack Thompson","San Jose",37,1578614400
+1011,karen@example.com,"Karen White","Austin",25,1578700800
+1012,leo@example.com,"Leo Martinez","Jacksonville",41,1578787200
+1013,mary@example.com,"Mary Anderson","Fort Worth",30,1578873600
+1014,nick@example.com,"Nick Taylor","Columbus",36,1578960000
+1015,olivia@example.com,"Olivia Moore","Charlotte",27,1579046400
+1016,paul@example.com,"Paul Jackson","San Francisco",39,1579132800
+1017,quinn@example.com,"Quinn Harris","Indianapolis",32,1579219200
+1018,ruby@example.com,"Ruby Clark","Seattle",28,1579305600
+1019,sam@example.com,"Sam Lewis","Denver",34,1579392000
+1020,tina@example.com,"Tina Walker","Washington",40,1579478400
+1021,uma@example.com,"Uma Young","Boston",29,1579564800
+1022,victor@example.com,"Victor King","Detroit",43,1579651200
+1023,wendy@example.com,"Wendy Scott","Nashville",31,1579737600
+1024,xavier@example.com,"Xavier Green","Memphis",35,1579824000
+1025,yara@example.com,"Yara Adams","Baltimore",26,1579910400
+1026,zoe@example.com,"Zoe Baker","Louisville",38,1579996800
+1027,alan@example.com,"Alan Cook","Milwaukee",42,1580083200
+1028,betty@example.com,"Betty Bell","Albuquerque",33,1580169600
+1029,carlos@example.com,"Carlos Rivera","Tucson",37,1580256000
+1030,donna@example.com,"Donna Ward","Fresno",30,1580342400

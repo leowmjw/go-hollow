@@ -1,0 +1,21 @@
+id,serial,type,location,manufacturer,model,installedAt,lastSeenAt
+3001,DEV-001-TEMP,sensor,"Building A - Floor 1 - Room 101",Acme Corp,TempSensor Pro,1577836800,1609459200
+3002,DEV-002-HUM,sensor,"Building A - Floor 1 - Room 102",Acme Corp,HumiditySensor Pro,1577923200,1609459200
+3003,DEV-003-PRES,sensor,"Building A - Floor 2 - Room 201",SensorTech,PressureSensor X1,1578009600,1609459200
+3004,DEV-004-TEMP,sensor,"Building A - Floor 2 - Room 202",Acme Corp,TempSensor Pro,1578096000,1609459200
+3005,DEV-005-ACT,actuator,"Building A - HVAC Room",AutoCorp,ClimateControl AC100,1578182400,1609459200
+3006,DEV-006-GATE,gateway,"Building A - Network Room",NetTech,IoT Gateway Pro,1578268800,1609459200
+3007,DEV-007-TEMP,sensor,"Building B - Floor 1 - Room 101",Acme Corp,TempSensor Pro,1578355200,1609459200
+3008,DEV-008-HUM,sensor,"Building B - Floor 1 - Room 102",Acme Corp,HumiditySensor Pro,1578441600,1609459200
+3009,DEV-009-VOLT,sensor,"Building B - Electrical Room",PowerTech,VoltageSensor V2,1578528000,1609459200
+3010,DEV-010-CURR,sensor,"Building B - Electrical Room",PowerTech,CurrentSensor C2,1578614400,1609459200
+3011,DEV-011-POW,sensor,"Building B - Electrical Room",PowerTech,PowerMeter P3,1578700800,1609459200
+3012,DEV-012-VIB,sensor,"Building B - Machine Room",VibeTech,VibrationSensor VS1,1578787200,1609459200
+3013,DEV-013-MOT,sensor,"Building B - Entrance",MotionTech,MotionDetector MD5,1578873600,1609459200
+3014,DEV-014-LIGHT,sensor,"Building B - Floor 1 - Room 103",LightTech,LightSensor LS2,1578960000,1609459200
+3015,DEV-015-SOUND,sensor,"Building B - Floor 1 - Room 104",AudioTech,SoundLevel SL3,1579046400,1609459200
+3016,DEV-016-CTRL,controller,"Building B - Control Room",AutoCorp,MasterController MC1,1579132800,1609459200
+3017,DEV-017-DISP,display,"Building B - Lobby",DisplayTech,InfoDisplay ID7,1579219200,1609459200
+3018,DEV-018-TEMP,sensor,"Building C - Floor 1 - Room 101",Acme Corp,TempSensor Pro,1579305600,1609459200
+3019,DEV-019-HUM,sensor,"Building C - Floor 1 - Room 102",Acme Corp,HumiditySensor Pro,1579392000,1609459200
+3020,DEV-020-PRES,sensor,"Building C - Floor 1 - Room 103",SensorTech,PressureSensor X1,1579478400,1609459200
