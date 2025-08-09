@@ -64,7 +64,8 @@ func (ws *WriteState) AddWithEngine(value interface{}) error {
 
 // AddWithIdentity adds a value to the write state with identity management
 // This method should be used by the WriteStateEngine when primary keys are configured
-func (ws *WriteState) AddWithIdentity(typeName string, value interface{}, ordinal int, isUpdate bool) {
+// The shard parameter records which shard this record belongs to for stable sharding.
+func (ws *WriteState) AddWithIdentity(typeName string, value interface{}, ordinal int, isUpdate bool, shard int) {
 	if ws.data[typeName] == nil {
 		ws.data[typeName] = make([]interface{}, 0)
 	}
@@ -75,6 +76,7 @@ func (ws *WriteState) AddWithIdentity(typeName string, value interface{}, ordina
 		Value:    value,
 		Ordinal:  ordinal,
 		IsUpdate: isUpdate,
+		Shard:    shard,
 	}
 	
 	ws.data[typeName] = append(ws.data[typeName], recordInfo)
@@ -85,6 +87,7 @@ type RecordInfo struct {
 	Value    interface{}
 	Ordinal  int
 	IsUpdate bool
+	Shard    int
 }
 
 func (ws *WriteState) GetData() map[string][]interface{} {
@@ -264,22 +267,87 @@ func (wse *WriteStateEngine) SetHeaderTag(key, value string) {
 }
 
 func (wse *WriteStateEngine) GetHeaderTags() map[string]string {
-	result := make(map[string]string)
-	for k, v := range wse.headerTags {
-		result[k] = v
-	}
-	return result
+    result := make(map[string]string)
+    for k, v := range wse.headerTags {
+        result[k] = v
+    }
+    return result
 }
 
 func (wse *WriteStateEngine) GetNumShards(typeName string) int {
-	if count, exists := wse.shardCounts[typeName]; exists {
-		return count
-	}
-	return 1
+    if count, exists := wse.shardCounts[typeName]; exists {
+        return count
+    }
+    return 1
 }
 
 func (wse *WriteStateEngine) SetNumShards(typeName string, count int) {
-	wse.shardCounts[typeName] = count
+    wse.shardCounts[typeName] = count
+}
+
+// GetShardByOrdinal returns the shard id for a record identified by its ordinal
+// in the current write state. Returns false if not found or not a PK-configured type.
+func (wse *WriteStateEngine) GetShardByOrdinal(typeName string, ordinal int) (int, bool) {
+    records, ok := wse.currentState.data[typeName]
+    if !ok {
+        return 0, false
+    }
+    for _, rec := range records {
+        if ri, ok := rec.(*RecordInfo); ok {
+            if ri.Ordinal == ordinal {
+                return ri.Shard, true
+            }
+        }
+    }
+    return 0, false
+}
+
+// ComputeShardForPrimaryKey deterministically computes the shard assignment for
+// a given primary key value under the current shard count. Returns false if the
+// type is not configured with a primary key.
+func (wse *WriteStateEngine) ComputeShardForPrimaryKey(typeName, primaryKeyValue string) (int, bool) {
+    if _, hasPK := wse.primaryKeys[typeName]; !hasPK {
+        return 0, false
+    }
+    shardCount := wse.GetNumShards(typeName)
+    if shardCount <= 0 {
+        shardCount = 1
+    }
+    h := Hash64String(primaryKeyValue)
+    return int(h % uint64(shardCount)), true
+}
+
+// RecomputeShardAssignments recalculates shard values for PK-configured types
+// This should be called after any resharding decision to ensure the shard index
+// aligns with the current shard count for each type.
+func (wse *WriteStateEngine) RecomputeShardAssignments() {
+	if !wse.HasPrimaryKeys() {
+		return
+	}
+	for typeName, pkField := range wse.primaryKeys {
+		shardCount := wse.GetNumShards(typeName)
+		if shardCount <= 0 {
+			shardCount = 1
+		}
+		records, ok := wse.currentState.data[typeName]
+		if !ok {
+			continue
+		}
+		for _, rec := range records {
+			ri, ok := rec.(*RecordInfo)
+			if !ok {
+				// Non-identity-wrapped records shouldn't exist for PK types
+				// but if they do, skip gracefully.
+				continue
+			}
+			key, err := wse.extractPrimaryKeyValue(ri.Value, pkField, typeName)
+			if err != nil {
+				continue
+			}
+			h := Hash64String(key)
+			ri.Shard = int(h % uint64(shardCount))
+		}
+	}
 }
 
 // GetCurrentDelta returns the delta set for the current cycle
@@ -409,9 +477,17 @@ func (wse *WriteStateEngine) AddWithPrimaryKey(value interface{}) error {
 	
 	// Get or create ordinal for this record
 	ordinal, isUpdate := wse.identityMap.GetOrCreateOrdinal(typeName, primaryKeyValue)
-	
+
+	// Compute PK-stable shard assignment
+	shardCount := wse.GetNumShards(typeName)
+	if shardCount <= 0 {
+		shardCount = 1
+	}
+	h := Hash64String(primaryKeyValue)
+	shard := int(h % uint64(shardCount))
+
 	// Add with identity information
-	wse.currentState.AddWithIdentity(typeName, value, ordinal, isUpdate)
+	wse.currentState.AddWithIdentity(typeName, value, ordinal, isUpdate, shard)
 	
 	// Track delta operation only if it's a real change
 	if isUpdate {

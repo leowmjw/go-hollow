@@ -48,8 +48,7 @@ func main() {
 	// Step 2: Create zero-copy consumer
 	slog.Info("Creating zero-copy consumer...")
 	
-	cons, err := consumer.NewZeroCopyConsumer(
-		ctx,
+	cons := consumer.NewZeroCopyConsumerWithOptions(
 		[]consumer.ConsumerOption{
 			consumer.WithBlobRetriever(blobStore),
 			consumer.WithAnnouncementWatcher(announcer),
@@ -58,10 +57,6 @@ func main() {
 			consumer.WithZeroCopySerializationMode(internal.ZeroCopyMode),
 		},
 	)
-	if err != nil {
-		slog.Error("Failed to create zero-copy consumer", "error", err)
-		return
-	}
 
 	// Step 3: Initial large dataset
 	slog.Info("Creating initial large dataset...")
@@ -85,8 +80,7 @@ func main() {
 	slog.Info("Consumer reading initial data with zero-copy...")
 	
 	start = time.Now()
-	err = cons.TriggerRefreshToWithZeroCopy(ctx, int64(version1))
-	if err != nil {
+	if err := cons.TriggerRefreshToWithZeroCopy(ctx, int64(version1)); err != nil {
 		slog.Error("Consumer refresh failed", "error", err)
 		return
 	}
@@ -142,8 +136,7 @@ func main() {
 	slog.Info("Consumer processing delta with zero-copy...")
 	
 	start = time.Now()
-	err = cons.TriggerRefreshToWithZeroCopy(ctx, int64(version2))
-	if err != nil {
+	if err := cons.TriggerRefreshToWithZeroCopy(ctx, int64(version2)); err != nil {
 		slog.Error("Consumer delta refresh failed", "error", err)
 		return
 	}
@@ -156,7 +149,7 @@ func main() {
 		"delta_efficiency", fmt.Sprintf("%.1fx faster than snapshot", float64(consumeTime)/float64(deltaConsumeTime)))
 
 	// Step 7: Demonstrate storage efficiency
-	demonstrateStorageEfficiency(blobStore, version1, version2)
+	demonstrateStorageEfficiency(blobStore, int64(version1), int64(version2))
 
 	// Step 8: Multiple delta cycles
 	demonstrateMultipleDeltaCycles(ctx, prod, cons)
@@ -187,21 +180,22 @@ func generateCustomers(count int, startID uint32) []Customer {
 	return customers
 }
 
-func demonstrateStorageEfficiency(blobStore blob.BlobStore, version1, version2 uint64) {
+func demonstrateStorageEfficiency(blobStore blob.BlobRetriever, version1, version2 int64) {
 	slog.Info("=== Storage Efficiency Analysis ===")
-	
-	// Get blob metadata for both versions
-	snapshotBlob, err := blobStore.GetBlob(fmt.Sprintf("hollow_snapshot_%d", version1))
-	if err != nil {
-		slog.Error("Failed to get snapshot blob", "error", err)
-		return
-	}
-	
-	deltaBlob, err := blobStore.GetBlob(fmt.Sprintf("hollow_delta_%d_%d", version1, version2))
-	if err != nil {
-		slog.Error("Failed to get delta blob", "error", err)
-		return
-	}
+    
+    // Get blob metadata for both versions
+    snapshotBlob := blobStore.RetrieveSnapshotBlob(version1)
+    if snapshotBlob == nil {
+        slog.Error("Failed to get snapshot blob", "version", version1)
+        return
+    }
+    
+    // Delta is keyed by FromVersion
+    deltaBlob := blobStore.RetrieveDeltaBlob(version1)
+    if deltaBlob == nil {
+        slog.Error("Failed to get delta blob", "fromVersion", version1, "toVersion", version2)
+        return
+    }
 	
 	snapshotSize := len(snapshotBlob.Data)
 	deltaSize := len(deltaBlob.Data)
@@ -248,8 +242,7 @@ func demonstrateMultipleDeltaCycles(ctx context.Context, prod *producer.Producer
 		
 		// Consumer processes delta
 		start = time.Now()
-		err := cons.TriggerRefreshToWithZeroCopy(ctx, int64(version))
-		if err != nil {
+		if err := cons.TriggerRefreshToWithZeroCopy(ctx, int64(version)); err != nil {
 			slog.Error("Delta cycle consumption failed", "cycle", cycle, "error", err)
 			continue
 		}

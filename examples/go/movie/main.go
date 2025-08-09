@@ -14,6 +14,7 @@ import (
 	"github.com/leowmjw/go-hollow/consumer"
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
+	common "github.com/leowmjw/go-hollow/generated/go/common"
 	movie "github.com/leowmjw/go-hollow/generated/go/movie/schemas"
 )
 
@@ -215,7 +216,16 @@ func loadRatings(ws *internal.WriteState) error {
 		ratingStruct.SetMovieId(uint32(movieID))
 		ratingStruct.SetUserId(uint32(userID))
 		ratingStruct.SetScore(float32(score))
-		ratingStruct.SetTimestamp(uint64(timestamp))
+		// Build Cap'n Proto Timestamp (seconds + nanos)
+		ts, err := common.NewTimestamp(seg)
+		if err != nil {
+			return fmt.Errorf("creating timestamp struct: %w", err)
+		}
+		ts.SetUnixSeconds(uint64(timestamp))
+		ts.SetNanos(0)
+		if err := ratingStruct.SetTimestamp(ts); err != nil {
+			return fmt.Errorf("setting rating timestamp: %w", err)
+		}
 
 		// Store both Cap'n Proto data and Go struct for indexing
 		ws.Add(ratingStruct.ToPtr())

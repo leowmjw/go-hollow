@@ -272,6 +272,9 @@ func (p *Producer) performResharding(writeState *internal.WriteState) {
 			p.writeEngine.SetNumShards(typeName, newShardCount)
 		}
 	}
+
+	// After any resharding decisions, recompute shard assignments for PK types
+	p.writeEngine.RecomputeShardAssignments()
 }
 
 func (p *Producer) storeBlob(ctx context.Context, version int64, writeState *internal.WriteState) error {

@@ -69,6 +69,94 @@ The core logic change will be in the `internal.WriteStateEngine`. It will now ma
 3.  **Maintain Identity Map**: The engine will maintain a mapping of `map[type]->map[primaryKeyValue]->ordinal` to track identities across cycles.
 
 This API-first approach ensures that the core data production layer correctly handles record identity, which will enable accurate delta generation and diffing capabilities throughout the system.
+
+## 5. Primary Key Support — Gaps to Meet TEST.md and Improvements
+
+The plan above is directionally correct, but several gaps must be closed to deliver the efficient, fast delta + diff behavior described in `TEST.md`. Below are focused, code-agnostic improvements to incorporate into the plan before implementation.
+
+* __Canonical type naming__
+  - Problem: Using reflection type names (e.g., `fmt.Sprintf("%T", v)`) is unstable and can differ from schema names.
+  - Action: Canonicalize on schema type names from `schema.Schema` (Cap'n Proto qualified name) and use those keys consistently in `Producer`/`WriteStateEngine`.
+
+* __Composite keys and extractors__
+  - Problem: `WithPrimaryKey(typeName, field)` only supports a single field and implies reflection in the hot path.
+  - Action: Extend the design to support composite keys and fast, non-reflective extraction:
+    - `WithPrimaryKeyFields(typeName string, fields []string)` for composite PKs.
+    - `WithPrimaryKeyExtractor(typeName string, extractor func(any) (any, bool))` to avoid reflection for Cap'n Proto-generated readers.
+    - Keep `WithPrimaryKey` as ergonomic sugar for the common single-field case.
+
+* __Persist identity across cycles__
+  - Problem: An in-cycle map (PK→ordinal) is insufficient. Deltas are computed against the prior published state.
+  - Action: Maintain a persistent identity index in `internal.WriteStateEngine` across cycles: `type → PK → ordinal`. Use it to:
+    - Reuse ordinals for existing PKs (stable identity).
+    - Assign new ordinals for new PKs.
+    - Detect deletions when a prior PK is absent in the current cycle.
+
+* __Deletion by omission semantics__
+  - Requirement (per `TEST.md` Tools/History tests): Records not present in a cycle should be treated as deletes.
+  - Action: At cycle finalization, compute set difference between previous PK set and current PK set to produce a deletion list. Do not require explicit delete calls.
+
+* __Delta format optimized for apply and reverse__
+  - Problem: Plan lacks a concrete, efficient delta payload.
+  - Action: Emit per-type delta sections with:
+    - Adds: list of (ordinal, record-bytes)
+    - Updates: list of (ordinal, record-bytes)
+    - Removes: list of ordinals
+    - Optional: a compact header with counts, shard, and checksum per section
+  - Ensure reverse delta can be derived or emitted to support `TestConsumer_ReverseDeltas`-style scenarios.
+
+* __Shard assignment is PK-stable__
+  - Requirement (Write Engine Resharding tests): Sharding shouldn’t break identity.
+  - Action: Compute shard via consistent hashing of PK (e.g., `shard = hash64(pk) % N`). Changing `N` triggers resharding, but identity remains PK-stable.
+
+* __Validation paths for missing/invalid PK__
+  - Requirement (`Missing hash key error detection` in `TEST.md`): Empty/zero PK must be rejected.
+  - Action: Add validator integration in the write path to detect:
+    - Missing PK field
+    - Zero/empty PK values (type-appropriate)
+    - Duplicate PK within a single cycle (last-write-wins is acceptable, but log a warning)
+
+* __Fast path for Cap'n Proto types__
+  - Problem: Reflection in the hot path undermines performance and contradicts “fast delta + diff”.
+  - Action: Prefer extractors that use Cap'n Proto generated accessors for PKs. Optionally, support a schema-driven, code-generated extractor table.
+
+* __Schema-driven PK discovery (optional but ideal)__
+  - Action: Allow PKs to be derived from schemas via convention or annotation:
+    - Convention: first field named `id` (or configurable list: `id`, `Id`, `ID`).
+    - Annotation: custom Cap'n Proto annotation (e.g., `@hollow.primaryKey("fieldA,fieldB")`) parsed by the existing regex-based parser and stored in `schema.Schema`.
+  - Benefit: Eliminates config drift and reduces runtime reflection/configuration.
+
+* __Index integration and test alignment__
+  - Requirement (`Indexing and Querying` tests): Provide a Primary Key index for fast lookups and history tracking.
+  - Action: Expose `GetOrdinalByPK(type, pk)` from the write/read engines so `PrimaryKeyIndex_Basic` and `History_KeyIndex`-style tests can use it. Ensure index updates are driven by delta application.
+
+* __Deterministic hashing for change detection__
+  - Problem: Version deduplication currently uses a coarse hash of “all data”.
+  - Action: Compute per-record content hashes (Cap'n Proto bytes) and a per-type aggregate hash. Use these to:
+    - Quickly detect unchanged records by PK
+    - Avoid unnecessary version bumps when nothing changed
+    - Provide integrity checks for delta application
+
+* __Concurrency and lifecycle__
+  - Action: Guard identity maps and versioned state transitions with a mutex in `producer.Producer` and `internal.WriteStateEngine`. Invalidate and prune per-type PK maps on deletions to avoid leaks.
+
+* __Tests required to satisfy `TEST.md`__
+  - Add/update tests to explicitly validate PK behavior end-to-end:
+    - __Adds/Updates/Deletes__: single and mixed, across multiple cycles; deletions by omission.
+    - __Composite PKs__: multiple fields forming the key; stable updates.
+    - __Missing PK__: validation failure path (“missing hash key”).
+    - __Index sync__: `PrimaryKeyIndex_Basic` and `Index_Updates` verify PK→ordinal lookups remain correct across deltas and resharding.
+    - __Reverse deltas__: apply forward and backward sequences to the same base snapshot.
+    - __Shard stability__: PK-stable shard assignment before and after resharding.
+    - __Performance guards__: microbench for PK extraction and delta build to prevent regressions.
+
+* __Documentation correctness__
+  - `AGENTS.md` currently claims “🔑 Primary Key Support ... Complete”. Update after implementation to reflect actual status and the decisions above (canonical type names, composite keys, extractor path, deletion by omission, PK-stable sharding).
+
+Notes:
+- Implement identity logic in `internal/state.go`’s `WriteStateEngine` (actual file name) rather than `internal/write_engine.go`.
+- Use the existing `fixtures/schema/test_schema.capnp` `Person.id` field as the exemplar for tests and docs.
+
 To resolve this, a `sync.Mutex` should be added to the `Producer` struct. This mutex must be used to protect the critical sections in all methods that access or modify the shared state (`currentVersion`, `lastDataHash`, etc.). Specifically, `RunCycle`, `RunCycleWithError`, and `Restore` should be locked to ensure that state transitions are atomic.
 
 ## 2. Unhandled Errors in `RunCycle`

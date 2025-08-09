@@ -9,6 +9,32 @@ This document captures key learnings, patterns, and insights from implementing g
 **Go Version**: 1.24.5
 **Status**: ✅ Complete through Phase 6 (Performance & Production Hardening) + **All NEXT STEPS Implemented** + **Zero-Copy Core Integration Complete** + **Cap'n Proto Schema Parsing Overhaul Complete** + **🔑 Primary Key Support with Delta Serialization Complete**
 
+## 📝 Agent Update — 2025-08-09
+
+This is a short, doc-only update to capture the latest context and handoff details. No code changes were made in this step.
+
+• __Current focus__: Stabilize the IoT zero-copy example to prevent freezes/hangs, ensure continuous processing, and improve robustness.
+
+• __Recent fixes (already in repo)__:
+  - Optimized `consumer.Consumer.findNearestSnapshot()` to iterate actual `ListVersions()` results (prevents hangs on large ranges).
+  - Ingestion now stores sequential snapshot versions and announces each version in `examples/go/iot_zerocopy/main.go`.
+  - Continuous processing simulation with logging and multiple concurrent zero-copy processors.
+
+• __Outstanding improvements requested__:
+  - Add context-based timeouts/cancellation to `consumer.Consumer.TriggerRefreshTo(...)` and related refresh paths.
+  - Graceful shutdown/cancellation for the consumer’s announcement watcher goroutine to avoid indefinite background runs.
+  - Robust error handling and logging for missing blobs and version mismatches.
+  - Automated tests covering version progression, refresh behavior under timeouts, and graceful shutdown.
+
+• __Suggested entry points__:
+  - `consumer/consumer.go` — refresh logic, announcement watching, and state transitions.
+  - `blob/goroutine_announcer.go` — watcher capabilities including `WaitForVersion` and shutdown.
+  - `examples/go/iot_zerocopy/main.go` — ingestion and continuous processing simulation.
+
+• __Test status (local)__: `go test ./...` passed across packages on 2025-08-09T20:39:24+08:00.
+
+• __Scope note__: This update only modifies `AGENTS.md` to aid handoff; implementation of the above improvements remains pending.
+
 ## 🏗️ Architecture Lessons
 
 ### 1. Package Structure Design

@@ -60,7 +60,7 @@ func (ga *GoroutineAnnouncer) processAnnouncement(version int64) {
 	ga.mu.Lock()
 	defer ga.mu.Unlock()
 	
-	if version > ga.latestVersion {
+	if version >= ga.latestVersion {
 		ga.latestVersion = version
 		
 		// Notify all subscribers
@@ -122,14 +122,21 @@ func (ga *GoroutineAnnouncer) cleanupDeadSubscribers() {
 
 // Announce implements Announcer interface
 func (ga *GoroutineAnnouncer) Announce(version int64) error {
-	select {
-	case ga.announceQueue <- version:
-		return nil
-	case <-ga.ctx.Done():
-		return context.Canceled
-	case <-time.After(1 * time.Second):
-		return fmt.Errorf("announcement queue is full")
-	}
+    // Update latest version immediately to avoid races with consumers querying it
+    ga.mu.Lock()
+    if version > ga.latestVersion {
+        ga.latestVersion = version
+    }
+    ga.mu.Unlock()
+
+    select {
+    case ga.announceQueue <- version:
+        return nil
+    case <-ga.ctx.Done():
+        return context.Canceled
+    case <-time.After(1 * time.Second):
+        return fmt.Errorf("announcement queue is full")
+    }
 }
 
 // GetLatestVersion implements AnnouncementWatcher interface
