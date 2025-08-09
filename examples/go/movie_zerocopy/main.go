@@ -14,6 +14,8 @@ import (
 	"capnproto.org/go/capnp/v3"
 	"github.com/leowmjw/go-hollow/blob"
 	"github.com/leowmjw/go-hollow/generated/go/movie"
+	"github.com/leowmjw/go-hollow/internal"
+	"github.com/leowmjw/go-hollow/producer"
 	"github.com/leowmjw/go-hollow/zero_copy"
 )
 
@@ -52,14 +54,20 @@ func demonstrateLargeDatasetProcessing(ctx context.Context, blobStore blob.BlobS
 	// 2. Write using zero-copy serialization
 	slog.Info("Writing dataset using zero-copy serialization...")
 	
-	writer := zerocopy.NewZeroCopyWriter(blobStore, announcer)
+	// Create producer with zero-copy serialization
+	prod := producer.NewProducer(
+		producer.WithBlobStore(blobStore),
+		producer.WithAnnouncer(announcer),
+		producer.WithSerializationMode(internal.ZeroCopyMode),
+		producer.WithNumStatesBetweenSnapshots(1), // Ensure snapshot for every version
+	)
 	
 	start = time.Now()
-	version, err := writer.WriteMovieDataset(ctx, largeDataset)
-	if err != nil {
-		slog.Error("Failed to write dataset", "error", err)
-		return
-	}
+	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+		for _, movieData := range largeDataset {
+			ws.Add(movieData)
+		}
+	})
 	writeTime := time.Since(start)
 	
 	slog.Info("Dataset written",

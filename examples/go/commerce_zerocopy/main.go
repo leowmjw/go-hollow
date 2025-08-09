@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/leowmjw/go-hollow/blob"
-	"github.com/leowmjw/go-hollow/zero_copy"
+	"github.com/leowmjw/go-hollow/internal"
+	"github.com/leowmjw/go-hollow/producer"
+	zerocopy "github.com/leowmjw/go-hollow/zero_copy"
 )
 
 // Define commerce data structures for zero-copy usage
@@ -149,7 +151,7 @@ func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.Blo
 	start = time.Now()
 	for _, service := range microservices {
 		wg.Add(1)
-		go func(svc struct {
+		go func(service struct {
 			name        string
 			reader      *zerocopy.ZeroCopyReader
 			description string
@@ -157,21 +159,20 @@ func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.Blo
 		}) {
 			defer wg.Done()
 			
-			serviceStart := time.Now()
+			start := time.Now()
 			
-			// Each service refreshes to the same version (zero-copy memory sharing)
-			err := svc.reader.RefreshTo(ctx, int64(version))
-			if err != nil {
-				slog.Error("Service refresh failed", "service", svc.name, "error", err)
+			if err := service.reader.RefreshTo(ctx, int64(version)); err != nil {
+				slog.Error("Service refresh failed", "service", service.name, "error", err)
+				results <- MicroserviceResult{ServiceName: service.name, ProcessingTime: time.Since(start), RecordsProcessed: 0}
 				return
 			}
 			
 			// Each service processes its workload using zero-copy access
-			processedRecords := processServiceWorkload(svc.name, svc.reader, svc.workload)
+			processedRecords := processServiceWorkload(service.name, service.reader, service.workload)
 			
-			processingTime := time.Since(serviceStart)
+			processingTime := time.Since(start)
 			results <- MicroserviceResult{
-				ServiceName:      svc.name,
+				ServiceName:      service.name,
 				ProcessingTime:   processingTime,
 				RecordsProcessed: processedRecords,
 			}
@@ -340,14 +341,31 @@ func demonstrateMemoryEfficiencyComparison(data CommerceData, numServices int) {
 }
 
 func writeCommerceDataset(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, data CommerceData) (uint64, error) {
-	// For this demo, we'll simulate writing the data
-	// In a real implementation, this would use Cap'n Proto serialization
+	// Create producer with zero-copy serialization
+	prod := producer.NewProducer(
+		producer.WithBlobStore(blobStore),
+		producer.WithAnnouncer(announcer),
+		producer.WithSerializationMode(internal.ZeroCopyMode),
+		producer.WithNumStatesBetweenSnapshots(1), // Ensure snapshot for every version
+	)
+
+	// Write data using producer
+	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+		// Add customers
+		for _, customer := range data.Customers {
+			ws.Add(customer)
+		}
+		// Add orders
+		for _, order := range data.Orders {
+			ws.Add(order)
+		}
+		// Add products
+		for _, product := range data.Products {
+			ws.Add(product)
+		}
+	})
 	
-	// Simulate writing time proportional to data size
-	totalRecords := len(data.Customers) + len(data.Orders) + len(data.Products)
-	time.Sleep(time.Duration(totalRecords/1000) * time.Millisecond)
-	
-	return uint64(totalRecords), nil
+	return uint64(version), nil
 }
 
 func generateCommerceDataset(numCustomers, numOrders, numProducts int) CommerceData {

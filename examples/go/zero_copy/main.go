@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/leowmjw/go-hollow/blob"
+	"github.com/leowmjw/go-hollow/internal"
+	"github.com/leowmjw/go-hollow/producer"
 	"github.com/leowmjw/go-hollow/zero_copy"
 )
 
@@ -23,7 +25,14 @@ func main() {
 
 	// Demo 1: Zero-Copy Writing
 	fmt.Println("\n1. Zero-Copy Writing Demo")
-	writer := zerocopy.NewZeroCopyWriter(blobStore, announcer)
+	
+	// Create producer with zero-copy serialization
+	prod := producer.NewProducer(
+		producer.WithBlobStore(blobStore),
+		producer.WithAnnouncer(announcer),
+		producer.WithSerializationMode(internal.ZeroCopyMode),
+		producer.WithNumStatesBetweenSnapshots(1), // Ensure snapshot for every version
+	)
 	
 	movies := []zerocopy.MovieData{
 		{ID: 1, Title: "The Matrix", Year: 1999, RuntimeMin: 136, Genres: []string{"Action", "Sci-Fi"}},
@@ -33,17 +42,18 @@ func main() {
 		{ID: 5, Title: "Dune", Year: 2021, RuntimeMin: 155, Genres: []string{"Action", "Adventure"}},
 	}
 
-	version, err := writer.WriteMovieDataset(ctx, movies)
-	if err != nil {
-		log.Fatalf("Failed to write dataset: %v", err)
-	}
+	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+		for _, movie := range movies {
+			ws.Add(movie)
+		}
+	})
 	fmt.Printf("✓ Written %d movies using zero-copy serialization (version: %d)\n", len(movies), version)
 
 	// Demo 2: Zero-Copy Reading
 	fmt.Println("\n2. Zero-Copy Reading Demo")
 	reader := zerocopy.NewZeroCopyReader(blobStore, announcer)
 	
-	err = reader.RefreshTo(ctx, int64(version))
+	err := reader.RefreshTo(ctx, int64(version))
 	if err != nil {
 		log.Fatalf("Failed to refresh reader: %v", err)
 	}
