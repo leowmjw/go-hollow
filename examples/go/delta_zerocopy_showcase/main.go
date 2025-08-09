@@ -42,6 +42,8 @@ func main() {
 	prod := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcer),
+		// Ensure zero-copy serialization so blobs advertise support via metadata
+		producer.WithSerializationMode(internal.ZeroCopyMode),
 		producer.WithPrimaryKey("Customer", "ID"), // Enable delta optimization
 	)
 

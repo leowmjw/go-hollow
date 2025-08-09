@@ -123,29 +123,48 @@ func (c *ZeroCopyConsumer) GetDataWithZeroCopyPreference() map[string][]interfac
 // createZeroCopyViewForVersion attempts to create a zero-copy view for a specific version
 func (c *ZeroCopyConsumer) createZeroCopyViewForVersion(ctx context.Context, version int64) error {
 	// Get the blob for this version - try snapshot first, then delta
-	var blob *blob.Blob
+	var dataBlob *blob.Blob
 	
 	// Access retriever through getter method
 	retriever := c.Consumer.GetRetriever()
 	if retriever != nil {
-		blob = retriever.RetrieveSnapshotBlob(version)
-		if blob == nil {
+		dataBlob = retriever.RetrieveSnapshotBlob(version)
+		if dataBlob == nil {
 			// Try delta blob if snapshot not found
-			blob = retriever.RetrieveDeltaBlob(version-1)
+			dataBlob = retriever.RetrieveDeltaBlob(version-1)
 		}
 	}
-	if blob == nil {
+	if dataBlob == nil {
 		return fmt.Errorf("no blob found for version %d", version)
+	}
+
+	// If we got an empty delta blob, fall back to the nearest snapshot.
+	// Empty deltas are valid (no changes) but contain no Cap'n Proto payload,
+	// which would cause EOF on zero-copy deserialization attempts.
+	if dataBlob.Type == blob.DeltaBlob && len(dataBlob.Data) == 0 {
+		// Find the nearest snapshot <= version
+		if c.Consumer != nil && c.Consumer.GetRetriever() != nil {
+			// Use 0 as fromVersion to search any snapshot up to target version
+			// This method is package-private but accessible within the consumer package
+			snapshot := c.Consumer.findNearestSnapshot(0, version)
+			if snapshot != nil {
+				dataBlob = snapshot
+			} else {
+				return fmt.Errorf("empty delta for version %d and no prior snapshot available", version)
+			}
+		} else {
+			return fmt.Errorf("empty delta for version %d and no retriever available", version)
+		}
 	}
 	
 	// Check if blob supports zero-copy serialization
-	if !c.blobSupportsZeroCopy(blob) {
+	if !c.blobSupportsZeroCopy(dataBlob) {
 		return fmt.Errorf("blob does not support zero-copy serialization")
 	}
 	
 	// Deserialize using zero-copy
 	serializer := c.getSerializer()
-	deserializedData, err := serializer.Deserialize(ctx, blob.Data)
+	deserializedData, err := serializer.Deserialize(ctx, dataBlob.Data)
 	if err != nil {
 		return fmt.Errorf("failed to deserialize blob: %w", err)
 	}

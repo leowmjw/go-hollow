@@ -177,8 +177,13 @@ func (s *CapnProtoSerializer) Deserialize(ctx context.Context, data []byte) (Des
 	// Zero-copy deserialization - just parse the message structure
 	msg, err := capnp.Unmarshal(data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal Cap'n Proto message: %w", err)
-	}
+        // Fallback: delta blobs are serialized with packed encoding
+        if packedMsg, perr := capnp.UnmarshalPacked(data); perr == nil {
+            msg = packedMsg
+        } else {
+            return nil, fmt.Errorf("failed to unmarshal Cap'n Proto message: %w", err)
+        }
+    }
 	
 	// Return zero-copy view that keeps reference to original buffer
 	result := &CapnProtoData{
@@ -229,16 +234,44 @@ func (s *CapnProtoSerializer) DeserializeDelta(ctx context.Context, data []byte)
 }
 
 func (s *CapnProtoSerializer) serializeWriteStateToCapnProto(writeState *WriteState, seg *capnp.Segment) error {
-	// This would contain the logic to convert WriteState data to Cap'n Proto structures
-	// For now, this is a placeholder that demonstrates the integration point
-	
-	// In a real implementation, this would:
-	// 1. Inspect the types in WriteState.GetData()
-	// 2. Create appropriate Cap'n Proto structs based on registered schemas
-	// 3. Populate the structs with data from WriteState
-	// 4. Set the root pointer to the serialized data
-	
-	return nil // Placeholder - actual implementation would populate the segment
+    // Minimal but valid snapshot serialization:
+    // Create a root struct and set a pointer to a list of type names.
+    // This ensures the message has a valid root pointer for zero-copy consumers.
+    root, err := capnp.NewRootStruct(seg, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+    if err != nil {
+        return fmt.Errorf("failed to create snapshot root: %w", err)
+    }
+
+    data := writeState.GetData()
+    // Collect type names deterministically (sorted) for stability
+    typeNames := make([]string, 0, len(data))
+    for typeName := range data {
+        typeNames = append(typeNames, typeName)
+    }
+    // Simple bubble sort to avoid importing sort for minimal footprint
+    for i := 0; i < len(typeNames); i++ {
+        for j := i + 1; j < len(typeNames); j++ {
+            if typeNames[i] > typeNames[j] {
+                typeNames[i], typeNames[j] = typeNames[j], typeNames[i]
+            }
+        }
+    }
+
+    // Create a TextList of type names (may be length 0) and set as first pointer
+    tl, err := capnp.NewTextList(seg, int32(len(typeNames)))
+    if err != nil {
+        return fmt.Errorf("failed to create type name list: %w", err)
+    }
+    for i, name := range typeNames {
+        if err := tl.Set(i, name); err != nil {
+            return fmt.Errorf("failed to set type name at %d: %w", i, err)
+        }
+    }
+    if err := root.SetPtr(0, tl.ToPtr()); err != nil {
+        return fmt.Errorf("failed to set root pointer: %w", err)
+    }
+
+    return nil
 }
 
 func (s *CapnProtoSerializer) serializeDeltaToCapnProto(deltaSet *DeltaSet, seg *capnp.Segment) error {

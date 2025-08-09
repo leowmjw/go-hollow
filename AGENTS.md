@@ -35,6 +35,48 @@ This is a short, doc-only update to capture the latest context and handoff detai
 
 • __Scope note__: This update only modifies `AGENTS.md` to aid handoff; implementation of the above improvements remains pending.
 
+## 🔄 Zero-Copy Serialization
+
+### Architecture Overview
+
+1. **Producer Side**
+   - Configure with `producer.WithSerializationMode(internal.ZeroCopyMode)`
+   - Sets "serialization_mode" metadata on blobs
+   - Creates valid Cap'n Proto root structs for snapshots
+   - Uses packed encoding for deltas
+
+2. **Consumer Side**
+   - Configure with `consumer.WithZeroCopySerializationMode(internal.ZeroCopyMode)`
+   - Verifies blob metadata for zero-copy support
+   - Falls back to nearest snapshot for empty deltas
+   - Implements graceful fallback to traditional mode
+
+3. **Cap'n Proto Requirements**
+   - Messages must always have valid root pointer
+   - Root struct must be set even for empty messages
+   - Delta blobs use packed encoding for compression
+   - Empty deltas are valid and handled gracefully
+
+### Best Practices
+
+1. **Serialization**
+   - Always set root pointer in Cap'n Proto messages
+   - Use packed encoding for deltas
+   - Handle empty deltas gracefully
+   - Verify blob metadata before zero-copy deserialization
+
+2. **Error Handling**
+   - Implement fallback paths for robustness
+   - Validate serialization mode in metadata
+   - Handle EOF gracefully for empty deltas
+   - Provide clear error messages
+
+3. **Performance Considerations**
+   - Use zero-copy for large datasets
+   - Fall back to traditional mode for small data
+   - Consider packed encoding for network efficiency
+   - Cache deserialized views when appropriate
+
 ## 🏗️ Architecture Lessons
 
 ### 1. Package Structure Design
