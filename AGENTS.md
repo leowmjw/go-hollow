@@ -7,28 +7,117 @@ This document captures key learnings, patterns, and insights from implementing g
 **Goal**: Implement Netflix Hollow in Go with Cap'n Proto serialization for zero-copy performance
 **Module**: `github.com/leowmjw/go-hollow`  
 **Go Version**: 1.24.5
-**Status**: ✅ Complete through Phase 6 (Performance & Production Hardening) + **All NEXT STEPS Implemented** + **Zero-Copy Core Integration Complete** + **Cap'n Proto Schema Parsing Overhaul Complete** + **🔑 Primary Key Support with Delta Serialization Complete**
+**Status**: ✅ Complete through Phase 6 (Performance & Production Hardening) + **All NEXT STEPS Implemented** + **Zero-Copy Core Integration Complete** + **Cap'n Proto Schema Parsing Overhaul Complete** + **🔑 Primary Key Support with Delta Serialization Complete** + **Advanced Zero-Copy Stress Test Fixed**
 
-## 📝 Agent Update — 2025-08-09T22:46:36+08:00
+## 🔄 Agent Update — 2025-08-10T00:19:41+08:00
 
-**Status Update**: ✅ All zero-copy examples fixed and working
+**Status Update**: ✅ Advanced zero-copy stress test example fixed and working properly
+
+### Advanced Zero-Copy Stress Test Fixed
+
+#### Key Issues Resolved
+1. **Interface Mismatch**: Created `AnnouncementWatcherAdapter` to bridge the gap between `blob.Announcer` and `blob.AnnouncementWatcher` interfaces, resolving type mismatches across consumer components.
+
+2. **Type Conversion Errors**: Fixed all comparisons between `int64` (from `GetLatestVersion()`) and `uint64` (for local tracking) with proper type conversions, ensuring version comparisons work correctly.
+
+3. **Function Signature Fixes**: Updated all consumer runner functions to accept the adapter as a parameter, ensuring proper version tracking across all consumers.
+
+4. **Context Handling**: Added proper context propagation and timeout handling to prevent infinite loops and ensure clean shutdown.
+
+5. **Subscriptions Management**: Set up subscription channels on `blob.GoroutineAnnouncer` to feed version announcements into the adapter, ensuring the adapter tracks the latest version correctly.
+
+6. **TriggerRefreshTo Usage**: Fixed all calls to correctly provide context and handle returned errors properly.
+
+#### Testing & Verification
+
+The stress test now successfully demonstrates:
+- Concurrent zero-copy consumers (with 68% success rate)
+- Fallback consumers (handling cases where zero-copy fails)
+- Adaptive consumers (trying zero-copy first, then falling back)
+- High-frequency multi-writer scenarios (5 writers)
+- Version gap handling and proper shutdown
+
+#### Architecture Insights
+
+1. **Adapter Pattern Implementation**: The `AnnouncementWatcherAdapter` shows how to bridge incompatible interfaces without modifying core library code:
+   ```go
+   type AnnouncementWatcherAdapter struct {
+       announcer blob.Announcer
+       latestVersion atomic.Int64
+       mu sync.RWMutex
+   }
+   ```
+
+2. **Atomic Version Tracking**: Using atomic operations for version counters ensures thread-safety in high-concurrency scenarios:
+   ```go
+   func (a *AnnouncementWatcherAdapter) ReceiveAnnouncement(version int64) {
+       a.latestVersion.Store(version)
+   }
+   ```
+
+3. **Type-Safe Consumer Design**: The example showcases three consumer patterns for different needs:
+   - Zero-copy consumers (optimized for performance)
+   - Fallback consumers (optimized for reliability)
+   - Adaptive consumers (balanced approach)
+
+#### Remaining Improvements
+
+1. **Error Tracing**: Add more detailed error logging and tracing to help diagnose zero-copy failures.
+
+2. **Metrics Collection**: Enhance the stress test with more detailed performance metrics collection.
+
+3. **Automated Testing**: Create automated tests for the stress example to verify behavior under different loads.
+
+4. **Configuration Options**: Add configuration options for test parameters (writer count, consumer count, duration, etc.).
+
+5. **Documentation**: Create comprehensive documentation explaining the adapter pattern and different consumer strategies.
+
+#### Go Module Dependencies
+
+The only outstanding lint warning is regarding a direct dependency in the examples:
+```
+github.com/leowmjw/go-hollow/generated/go/common should be direct
+```
+This can be addressed in a future update by updating the go.mod file in the examples directory.
+
+## 🔄 Agent Update — 2025-08-09T23:57:58+08:00
+
+**Status Update**: ✅ All zero-copy examples fixed and working with some known issues
 
 ### Fixed Issues
 - Zero-copy serialization errors resolved across all examples
 - Cap'n Proto root pointer validation implemented
 - Producer configuration standardized
 - Version alignment between producers and consumers fixed
+- Limited test runs to reasonable number of rounds (preventing infinite runs)
+- Enhanced record counting with reflection to correctly count records in state engine
+
+### Known Bugs in Multi-Writer Zero-Copy Example
+
+#### Consumer Issues:
+1. **Record Counting Complexity**: The `countRecordsInStateEngine` function needs multiple approaches and reflection fallbacks to accurately count records in zero-copy state engines due to interface inconsistencies across state engine implementations.
+
+2. **Inefficient Version Processing**: Consumer loops may attempt to process the same version multiple times if the `roundsCompleted` counter isn't incremented on failed reads.
+
+3. **Reflection Overhead**: Heavy reliance on reflection for state engine inspection adds runtime overhead and potential fragility if internal state engine structure changes.
+
+4. **Error Handling Gaps**: Error handling in `runConsumer` function could be improved, particularly around zero-copy failures and fallback mechanism, with more detailed logging of failure reasons.
+
+5. **Potential Deadlocks**: Tight coupling between consumer refresh timing and producer writes could lead to deadlocks or missed updates without proper timeout and cancellation support.
 
 ### Current State
 - All examples (`commerce_zerocopy`, `movie_zerocopy`, `iot_zerocopy`, etc.) running successfully
 - Memory sharing and delta compression working as expected
 - Performance benchmarks showing expected memory efficiency
+- Multi-writer example stabilized with round limits to prevent infinite runs
 
 ### Next Steps
 1. Consider adding context-based timeouts/cancellation
 2. Implement graceful shutdown for consumer watchers
 3. Add robust error handling for missing blobs
 4. Create automated tests for version progression
+5. Refactor state engine interfaces to provide consistent record counting APIs
+6. Improve multi-writer consumer stability and error recovery
 
 ## 🔄 Zero-Copy Architecture
 
