@@ -103,8 +103,7 @@ func main() {
     defer announcer.Close()
     
     // Create a consumer with zero-copy support
-    c, err := consumer.NewZeroCopyConsumer(
-        context.Background(),
+    c := consumer.NewZeroCopyConsumerWithOptions(
         []consumer.ConsumerOption{
             consumer.WithBlobRetriever(store),
             consumer.WithAnnouncementWatcher(announcer),
@@ -115,7 +114,8 @@ func main() {
     )
     
     // Efficiently refresh to latest version (delta chain traversal)
-    err = c.TriggerRefreshToWithZeroCopy(context.Background(), version2)
+    // Note: version2 comes from the producer example above
+    err := c.TriggerRefreshToWithZeroCopy(context.Background(), version2)
     if err != nil {
         panic(err)
     }
@@ -128,7 +128,7 @@ func main() {
 
 ## CLI Usage
 
-Go-Hollow includes a command-line tool for schema validation, data inspection, and more.
+Go-Hollow includes a command-line tool for schema validation, data inspection, and interactive data operations.
 
 ### Basic Commands
 
@@ -139,17 +139,53 @@ Go-Hollow includes a command-line tool for schema validation, data inspection, a
 # Validate a schema file
 ./hollow-cli schema -data=fixtures/schema/test_schema.capnp -verbose
 
-# Run a producer cycle with test data
-./hollow-cli produce -data=data.json -store=memory
+# Start interactive producer session with test data
+./hollow-cli produce -data=fixtures/test_data.json -store=memory
+```
 
-# Consume data from a specific version
-./hollow-cli consume -version=1 -verbose
+### Interactive Mode
 
-# Inspect a specific version
-./hollow-cli inspect -store=memory -version=1
+The `produce` command opens an interactive session where you can perform multiple operations:
 
-# Compare two versions
-./hollow-cli diff -store=memory -version=1 -target=2
+```bash
+# Start interactive session
+./hollow-cli produce -data=fixtures/test_data.json -store=memory
+
+# Available interactive commands:
+# c <version>      - Consume data from specific version
+# i <version>      - Inspect specific version  
+# d <from> <to>    - Diff between two versions
+# p [type] [count] - Produce additional data
+# l [blobs]        - List versions or detailed blob info
+# q                - Quit
+```
+
+Example interactive session:
+```
+Version: 1
+
+=== Interactive Mode (Memory Storage) ===
+Data is now available in memory. Current version: 1
+
+hollow> c 1
+Consumer successfully refreshed to version: 1
+State engine ready with version: 1
+
+hollow> i 1  
+Snapshot blob for version 1:
+  Type: 0
+  Version: 1
+  Data size: 172 bytes
+
+hollow> p String 3
+New version produced: 2
+
+hollow> d 1 2
+Diff from version 1 to 2:
+Changes: 1
+
+hollow> q
+Goodbye!
 ```
 
 ### Schema Validation
@@ -169,13 +205,32 @@ Schema Address validated successfully
 Schema Role validated successfully
 Schema validation passed for 3 schemas
 
-Schema: Person (Type: 0)
-  Fields: 7
-    id (reference to @0)
-    name (reference to @1)
-    email (reference to @2)
-    ...
+Schema: Address (Type: 0)
+  Fields: 5
+    street (primitive)
+    city (primitive)
+    state (primitive)
+    zipCode (primitive)
+    country (primitive)
 ```
+
+### Testing the CLI
+
+You can test all CLI features using the provided test scripts:
+
+```bash
+# Run a comprehensive interactive demo
+./fixtures/demo_cli.sh
+
+# Run automated feature tests
+./fixtures/test_cli_features.sh
+```
+
+The demo script showcases:
+- Producer-consumer workflow with delta evolution
+- Data inspection and version comparison
+- Zero-copy integration with graceful fallback
+- Realistic data operations (add, update, delete, mixed)
 
 ## Contributing
 

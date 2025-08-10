@@ -219,6 +219,10 @@ func ExtractFieldValue(obj interface{}, fieldName string) interface{} {
 		return nil
 	}
 	
+	if !field.CanInterface() {
+		return nil
+	}
+	
 	return field.Interface()
 }
 

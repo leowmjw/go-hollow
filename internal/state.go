@@ -369,14 +369,17 @@ func (wse *WriteStateEngine) HasPrimaryKeys() bool {
 
 // CalculateDeletes identifies records that were removed by omission
 func (wse *WriteStateEngine) CalculateDeletes() {
-	if !wse.HasPrimaryKeys() || wse.previousState == nil {
-		return // Can't calculate deletes without primary keys or previous state
+	if wse.previousState == nil {
+		return // Can't calculate deletes without previous state
 	}
 	
 	// For each type with primary keys, find missing records
 	for typeName, primaryKeyField := range wse.primaryKeys {
 		wse.calculateDeletesForType(typeName, primaryKeyField)
 	}
+	
+	// Generate deltas for types without primary keys
+	wse.generateDeltasForNonPKTypes()
 }
 
 func (wse *WriteStateEngine) calculateDeletesForType(typeName, primaryKeyField string) {
@@ -412,6 +415,88 @@ func (wse *WriteStateEngine) calculateDeletesForType(typeName, primaryKeyField s
 				// This record was deleted by omission
 				if ordinal, exists := wse.identityMap.GetOrdinal(typeName, keyValue); exists {
 					wse.currentDelta.AddRecord(typeName, DeltaDelete, ordinal, nil)
+				}
+			}
+		}
+	}
+}
+
+// generateDeltasForNonPKTypes generates deltas for types without primary keys
+// using positional/ordinal comparison
+func (wse *WriteStateEngine) generateDeltasForNonPKTypes() {
+	if wse.previousState == nil {
+		// No previous state, all current data is new
+		for typeName, currentRecords := range wse.currentState.data {
+			if _, hasPK := wse.primaryKeys[typeName]; hasPK {
+				continue // Skip types that have primary keys
+			}
+			
+			for i, record := range currentRecords {
+				var value interface{}
+				if recordInfo, ok := record.(*RecordInfo); ok {
+					value = recordInfo.Value
+				} else {
+					value = record
+				}
+				wse.currentDelta.AddRecord(typeName, DeltaAdd, i, value)
+			}
+		}
+		return
+	}
+	
+	// Compare current state with previous state for non-PK types
+	for typeName, currentRecords := range wse.currentState.data {
+		if _, hasPK := wse.primaryKeys[typeName]; hasPK {
+			continue // Skip types that have primary keys
+		}
+		
+		// Get previous records for this type
+		previousRecords := []interface{}{}
+		if prevData, exists := wse.previousState.data[typeName]; exists {
+			previousRecords = prevData
+		}
+		
+		// Find the maximum index to compare
+		maxLen := len(currentRecords)
+		if len(previousRecords) > maxLen {
+			maxLen = len(previousRecords)
+		}
+		
+		// Compare record by record using positional logic
+		for i := 0; i < maxLen; i++ {
+			switch {
+			case i >= len(previousRecords):
+				// New record at this position
+				var value interface{}
+				if recordInfo, ok := currentRecords[i].(*RecordInfo); ok {
+					value = recordInfo.Value
+				} else {
+					value = currentRecords[i]
+				}
+				wse.currentDelta.AddRecord(typeName, DeltaAdd, i, value)
+				
+			case i >= len(currentRecords):
+				// Record deleted at this position
+				wse.currentDelta.AddRecord(typeName, DeltaDelete, i, nil)
+				
+			default:
+				// Possible update - compare values
+				var currentValue, previousValue interface{}
+				
+				if recordInfo, ok := currentRecords[i].(*RecordInfo); ok {
+					currentValue = recordInfo.Value
+				} else {
+					currentValue = currentRecords[i]
+				}
+				
+				if recordInfo, ok := previousRecords[i].(*RecordInfo); ok {
+					previousValue = recordInfo.Value
+				} else {
+					previousValue = previousRecords[i]
+				}
+				
+				if !wse.valuesEqual(currentValue, previousValue) {
+					wse.currentDelta.AddRecord(typeName, DeltaUpdate, i, currentValue)
 				}
 			}
 		}

@@ -116,7 +116,7 @@ func runInteractiveMode(blobStore blob.BlobStore, announcer blob.Announcer, prod
 			// Read existing data first
 			existingData := readExistingData(zeroCopyConsumer, currentVersion)
 
-			newVersion := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+			newVersion, err := prod.RunCycleE(ctx, func(ws *internal.WriteState) {
 				switch operationType {
 				case "add":
 					// First re-add all existing data
@@ -195,6 +195,11 @@ func runInteractiveMode(blobStore blob.BlobStore, announcer blob.Announcer, prod
 					fmt.Printf("Mixed operations: %d added, %d updated, %d deleted\n", addedCount, updatedCount, deletedCount)
 				}
 			})
+
+			if err != nil {
+				fmt.Printf("❌ Error producing new version: %v\n", err)
+				continue
+			}
 
 			if newVersion == currentVersion {
 				fmt.Printf("No changes detected - version remains: %d\n", currentVersion)
@@ -349,10 +354,13 @@ func showBlobSummary(blobStore blob.BlobStore, version int64) {
 		fmt.Printf("  📸 Snapshot blob: %d bytes\n", len(snapshotBlob.Data))
 	}
 
-	// Check for delta blob
-	deltaBlob := blobStore.RetrieveDeltaBlob(version)
-	if deltaBlob != nil {
-		fmt.Printf("  🔄 Delta blob: %d bytes\n", len(deltaBlob.Data))
+	// Check for delta blob (delta FROM previous version TO this version)
+	var deltaBlob *blob.Blob
+	if version > 1 {
+		deltaBlob = blobStore.RetrieveDeltaBlob(version - 1)
+		if deltaBlob != nil {
+			fmt.Printf("  🔄 Delta blob: %d bytes\n", len(deltaBlob.Data))
+		}
 	}
 
 	if snapshotBlob == nil && deltaBlob == nil {

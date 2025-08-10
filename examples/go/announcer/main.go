@@ -117,7 +117,7 @@ func demonstratePubSub(announcer *blob.GoroutineAnnouncer) {
 	}
 
 	// Check that all subscribers received the announcements
-	checkSubscriberReceived := func(subscriber chan int64, name string) {
+	checkSubscriberReceived := func(subscriber <-chan int64, name string) {
 		received := make([]int64, 0, 5)
 		timeout := time.After(1 * time.Second)
 		
@@ -137,24 +137,20 @@ func demonstratePubSub(announcer *blob.GoroutineAnnouncer) {
 	checkSubscriberReceived(subscriber2, "subscriber2")
 	checkSubscriberReceived(subscriber3, "subscriber3")
 
-	// Test unsubscribe
-	announcer.Unsubscribe(subscriber2)
+	// Test unsubscribe using new API
+	subscription2.Close()
 	slog.Info("Unsubscribed subscriber2", "remaining_subscribers", announcer.GetSubscriberCount())
 
 	// Announce another version - only subscriber1 and subscriber3 should receive it
 	announcer.Announce(6)
 	time.Sleep(50 * time.Millisecond)
 
-	// Clean up - unsubscribe before closing
-	announcer.Unsubscribe(subscriber1)
-	announcer.Unsubscribe(subscriber3) // subscriber2 already unsubscribed
+	// Clean up - close subscriptions (which automatically unsubscribes)
+	subscription1.Close()
+	subscription3.Close() // subscription2 already closed
 	
 	// Give time for cleanup
 	time.Sleep(50 * time.Millisecond)
-	
-	close(subscriber1)
-	close(subscriber2)
-	close(subscriber3)
 	
 	slog.Info("✅ Pub/Sub pattern: Multiple subscribers work correctly")
 }
@@ -246,7 +242,7 @@ func demonstratePinUnpin(announcer *blob.GoroutineAnnouncer) {
 
 	// Test subscriber notification during pin/unpin
 	subscriber := make(chan int64, 20)
-	announcer.Subscribe(subscriber)
+	announcer.SubscribeChannel(subscriber)
 	defer announcer.Unsubscribe(subscriber)
 
 	// Pin to a specific version
@@ -402,7 +398,7 @@ func demonstrateHighFrequency(announcer *blob.GoroutineAnnouncer) {
 	
 	for i := 0; i < numSubscribers; i++ {
 		subscribers[i] = make(chan int64, 1000) // Large buffer for high frequency
-		announcer.Subscribe(subscribers[i])
+		announcer.SubscribeChannel(subscribers[i])
 	}
 
 	// Performance test: rapid announcements
@@ -489,7 +485,7 @@ func demonstrateErrorScenarios(announcer *blob.GoroutineAnnouncer) {
 	slog.Info("Test 1: Dead subscriber cleanup")
 	
 	deadSubscriber := make(chan int64, 1)
-	announcer.Subscribe(deadSubscriber)
+	announcer.SubscribeChannel(deadSubscriber)
 	close(deadSubscriber) // Close the channel immediately
 	
 	subscriberCount := announcer.GetSubscriberCount()
@@ -512,7 +508,7 @@ func demonstrateErrorScenarios(announcer *blob.GoroutineAnnouncer) {
 	slog.Info("Test 2: Full channel handling")
 	
 	fullSubscriber := make(chan int64, 1) // Very small buffer
-	announcer.Subscribe(fullSubscriber)
+	announcer.SubscribeChannel(fullSubscriber)
 	
 	// Fill the channel
 	fullSubscriber <- 999
@@ -535,8 +531,8 @@ func demonstrateErrorScenarios(announcer *blob.GoroutineAnnouncer) {
 	// Add some subscribers
 	testSub1 := make(chan int64, 10)
 	testSub2 := make(chan int64, 10)
-	testAnnouncer.Subscribe(testSub1)
-	testAnnouncer.Subscribe(testSub2)
+	testAnnouncer.SubscribeChannel(testSub1)
+	testAnnouncer.SubscribeChannel(testSub2)
 	
 	beforeCount := testAnnouncer.GetSubscriberCount()
 	slog.Info("Test announcer setup", "subscriber_count", beforeCount)
@@ -650,7 +646,7 @@ func demonstrateRealIntegration(ctx context.Context, blobStore blob.BlobStore, a
 
 	// Set up monitoring
 	monitor := make(chan int64, 10)
-	announcer.Subscribe(monitor)
+	announcer.SubscribeChannel(monitor)
 	defer announcer.Unsubscribe(monitor)
 
 	version51 := prod.RunCycle(ctx, func(ws *internal.WriteState) {

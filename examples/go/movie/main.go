@@ -394,8 +394,6 @@ func transferDataToReadState(readState *internal.ReadState, writeState *internal
 	// We'll create mock types that the index system can find
 	slog.Info("Transferring demo data to read state")
 	
-	// For the indexes to work, we need the ReadState to contain our data types
-	// Since we can't directly add them, we'll add mock types for now
-	readState.AddMockType("main.Movie")
-	readState.AddMockType("main.Rating")
+	// Note: In a real application, this data would come from producer-consumer workflow
+	// For this demo, we're showing the index capabilities directly
 }

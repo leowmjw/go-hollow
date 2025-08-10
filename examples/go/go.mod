@@ -5,10 +5,6 @@ go 1.24.5
 require (
 	capnproto.org/go/capnp/v3 v3.1.0-alpha.1
 	github.com/leowmjw/go-hollow v0.0.0
-	github.com/leowmjw/go-hollow/generated/go/commerce v0.0.0
-	github.com/leowmjw/go-hollow/generated/go/common v0.0.0-20250809124501-429ef749c6f4
-	github.com/leowmjw/go-hollow/generated/go/iot v0.0.0
-	github.com/leowmjw/go-hollow/generated/go/movie v0.0.0
 )
 
 require (
@@ -19,7 +15,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/leowmjw/go-hollow/generated/go/delta v0.0.0-20250809124501-429ef749c6f4 // indirect
 	github.com/minio/crc64nvme v1.1.0 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/minio/minio-go/v7 v7.0.95 // indirect
@@ -34,9 +29,3 @@ require (
 )
 
 replace github.com/leowmjw/go-hollow => ../../
-
-replace github.com/leowmjw/go-hollow/generated/go/movie => ../../generated/go/movie
-
-replace github.com/leowmjw/go-hollow/generated/go/commerce => ../../generated/go/commerce
-
-replace github.com/leowmjw/go-hollow/generated/go/iot => ../../generated/go/iot

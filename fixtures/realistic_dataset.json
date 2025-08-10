@@ -1,0 +1,14 @@
+[
+  {"user_id": "user_001", "name": "Alice Johnson", "email": "alice@example.com", "role": "admin", "created_at": "2024-01-15", "last_login": "2024-11-08"},
+  {"user_id": "user_002", "name": "Bob Smith", "email": "bob@example.com", "role": "user", "created_at": "2024-02-20", "last_login": "2024-11-07"},
+  {"user_id": "user_003", "name": "Carol Davis", "email": "carol@example.com", "role": "moderator", "created_at": "2024-03-10", "last_login": "2024-11-08"},
+  {"product_id": "prod_001", "name": "Wireless Headphones", "category": "electronics", "price": 199.99, "inventory": 150, "supplier": "TechCorp"},
+  {"product_id": "prod_002", "name": "Coffee Maker", "category": "appliances", "price": 89.99, "inventory": 75, "supplier": "HomeGoods"},
+  {"product_id": "prod_003", "name": "Running Shoes", "category": "sports", "price": 129.99, "inventory": 200, "supplier": "SportsCo"},
+  {"order_id": "ord_001", "user_id": "user_001", "product_id": "prod_001", "quantity": 1, "total": 199.99, "status": "shipped", "order_date": "2024-11-01"},
+  {"order_id": "ord_002", "user_id": "user_002", "product_id": "prod_002", "quantity": 1, "total": 89.99, "status": "processing", "order_date": "2024-11-05"},
+  {"order_id": "ord_003", "user_id": "user_003", "product_id": "prod_003", "quantity": 2, "total": 259.98, "status": "delivered", "order_date": "2024-10-28"},
+  {"metric_id": "cpu_usage", "timestamp": "2024-11-08T10:00:00Z", "value": 65.2, "unit": "percent", "host": "server-01"},
+  {"metric_id": "memory_usage", "timestamp": "2024-11-08T10:00:00Z", "value": 4096, "unit": "MB", "host": "server-01"},
+  {"metric_id": "disk_usage", "timestamp": "2024-11-08T10:00:00Z", "value": 85.7, "unit": "percent", "host": "server-02"}
+]
