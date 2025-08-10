@@ -144,9 +144,21 @@ func (c *ZeroCopyConsumer) createZeroCopyViewForVersion(ctx context.Context, ver
 	if dataBlob.Type == blob.DeltaBlob && len(dataBlob.Data) == 0 {
 		// Find the nearest snapshot <= version
 		if c.Consumer != nil && c.Consumer.GetRetriever() != nil {
-			// Use 0 as fromVersion to search any snapshot up to target version
-			// This method is package-private but accessible within the consumer package
-			snapshot := c.Consumer.findNearestSnapshot(0, version)
+			retriever := c.Consumer.GetRetriever()
+			versions := retriever.ListVersions()
+			
+			// Find the highest version <= target version that has a snapshot
+			var snapshot *blob.Blob
+			for i := len(versions) - 1; i >= 0; i-- {
+				v := versions[i]
+				if v <= version {
+					if snap := retriever.RetrieveSnapshotBlob(v); snap != nil {
+						snapshot = snap
+						break
+					}
+				}
+			}
+			
 			if snapshot != nil {
 				dataBlob = snapshot
 			} else {

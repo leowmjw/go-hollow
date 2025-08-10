@@ -3,7 +3,6 @@ package consumer
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/leowmjw/go-hollow/blob"
 	"github.com/leowmjw/go-hollow/internal"
@@ -32,6 +31,13 @@ func WithBlobRetriever(retriever blob.BlobRetriever) ConsumerOption {
 func WithAnnouncementWatcher(watcher blob.AnnouncementWatcher) ConsumerOption {
 	return func(c *Consumer) {
 		c.watcher = watcher
+		c.autoRefresh = true
+	}
+}
+
+func WithAnnouncer(announcer blob.Announcer) ConsumerOption {
+	return func(c *Consumer) {
+		c.watcher = announcer // Announcer now implements AnnouncementWatcher
 		c.autoRefresh = true
 	}
 }
@@ -67,23 +73,25 @@ func NewConsumer(opts ...ConsumerOption) *Consumer {
 
 	// Start watching for announcements if watcher is provided
 	if c.autoRefresh && c.watcher != nil {
-		go c.watchAnnouncements()
+		go c.autoRefreshLoop()
 	}
 
 	return c
 }
 
-func (c *Consumer) watchAnnouncements() {
-	// In a real implementation, this would watch for announcements
-	// and trigger refreshes automatically
-	for {
-		time.Sleep(50 * time.Millisecond)
-		latestVersion := c.watcher.GetLatestVersion()
-		currentVersion := c.readEngine.GetCurrentVersion()
-
-		if latestVersion > currentVersion {
-			// Auto-refresh to latest version
-			c.TriggerRefreshTo(context.Background(), latestVersion)
+func (c *Consumer) autoRefreshLoop() {
+	// Push-based updates - no polling, no busy wait
+	if announcer, ok := c.watcher.(blob.Announcer); ok {
+		updates := make(chan int64, 1)
+		announcer.Subscribe(updates)
+		defer announcer.Unsubscribe(updates)
+		
+		for version := range updates {
+			currentVersion := c.readEngine.GetCurrentVersion()
+			if version > currentVersion {
+				// Auto-refresh to new version (idempotent call)
+				c.TriggerRefreshTo(context.Background(), version)
+			}
 		}
 	}
 }
@@ -112,7 +120,31 @@ func (c *Consumer) TriggerRefresh(ctx context.Context) error {
 	return c.TriggerRefreshTo(ctx, latestVersion)
 }
 
-// TriggerRefreshTo refreshes to a specific version
+// planBlobs creates an optimized plan for transitioning from current to target version
+func (c *Consumer) planBlobs(from, to int64) ([]*blob.Blob, error) {
+	var chain []*blob.Blob
+	
+	// Walk backwards from 'to' until we hit a snapshot or 'from'
+	cur := to
+	for cur > from {
+		if snap := c.retriever.RetrieveSnapshotBlob(cur); snap != nil {
+			// Found the anchor - add snapshot first
+			chain = append([]*blob.Blob{snap}, chain...)
+			break
+		}
+		if delta := c.retriever.RetrieveDeltaBlob(cur - 1); delta != nil {
+			// Add delta to front of chain
+			chain = append([]*blob.Blob{delta}, chain...)
+			cur = delta.FromVersion
+		} else {
+			return nil, fmt.Errorf("gap at version %d", cur-1)
+		}
+	}
+	
+	return chain, nil
+}
+
+// TriggerRefreshTo refreshes to a specific version using optimized blob planning
 func (c *Consumer) TriggerRefreshTo(ctx context.Context, targetVersion int64) error {
 	currentVersion := c.readEngine.GetCurrentVersion()
 
@@ -120,18 +152,26 @@ func (c *Consumer) TriggerRefreshTo(ctx context.Context, targetVersion int64) er
 		return nil // Already at target version
 	}
 
-	// Try to get snapshot first
-	snapshotBlob := c.retriever.RetrieveSnapshotBlob(targetVersion)
-	if snapshotBlob != nil {
-		return c.loadSnapshot(snapshotBlob)
+	// Use optimized planning for blob retrieval
+	blobs, err := c.planBlobs(currentVersion, targetVersion)
+	if err != nil {
+		return err
 	}
 
-	// If no direct snapshot, try delta traversal
-	if targetVersion > currentVersion {
-		return c.followDeltaChain(currentVersion, targetVersion)
-	} else {
-		return c.followReverseDeltaChain(currentVersion, targetVersion)
+	// Apply blobs in sequence
+	for _, b := range blobs {
+		if b.Type == blob.SnapshotBlob {
+			if err := c.loadSnapshot(b); err != nil {
+				return err
+			}
+		} else if b.Type == blob.DeltaBlob {
+			if err := c.applyDelta(b); err != nil {
+				return err
+			}
+		}
 	}
+
+	return nil
 }
 
 func (c *Consumer) loadSnapshot(blob *blob.Blob) error {
@@ -153,85 +193,7 @@ func (c *Consumer) loadSnapshot(blob *blob.Blob) error {
 	return nil
 }
 
-func (c *Consumer) followDeltaChain(fromVersion, toVersion int64) error {
-	currentVersion := fromVersion
 
-	for currentVersion < toVersion {
-		deltaBlob := c.retriever.RetrieveDeltaBlob(currentVersion)
-		if deltaBlob == nil {
-			// Try to find a snapshot closer to target
-			snapshotBlob := c.findNearestSnapshot(currentVersion, toVersion)
-			if snapshotBlob != nil {
-				err := c.loadSnapshot(snapshotBlob)
-				if err != nil {
-					return err
-				}
-				currentVersion = snapshotBlob.Version
-				continue
-			}
-			return fmt.Errorf("no delta blob found from version %d", currentVersion)
-		}
-
-		// Apply delta
-		err := c.applyDelta(deltaBlob)
-		if err != nil {
-			return err
-		}
-
-		currentVersion = deltaBlob.ToVersion
-	}
-
-	return nil
-}
-
-func (c *Consumer) followReverseDeltaChain(fromVersion, toVersion int64) error {
-	currentVersion := fromVersion
-
-	for currentVersion > toVersion {
-		reverseBlob := c.retriever.RetrieveReverseBlob(currentVersion)
-		if reverseBlob == nil {
-			return fmt.Errorf("no reverse delta blob found for version %d", currentVersion)
-		}
-
-		// Apply reverse delta
-		err := c.applyReverseDelta(reverseBlob)
-		if err != nil {
-			return err
-		}
-
-		currentVersion = reverseBlob.FromVersion
-	}
-
-	return nil
-}
-
-func (c *Consumer) findNearestSnapshot(fromVersion, toVersion int64) *blob.Blob {
-	// Efficiently find the nearest snapshot using retriever's version index
-	if c.retriever == nil {
-		return nil
-	}
-
-	versions := c.retriever.ListVersions()
-	if len(versions) == 0 {
-		return nil
-	}
-
-	// Iterate from newest to oldest snapshot and pick the closest <= toVersion and > fromVersion
-	for i := len(versions) - 1; i >= 0; i-- {
-		v := versions[i]
-		if v <= toVersion && v > fromVersion {
-			if snapshot := c.retriever.RetrieveSnapshotBlob(v); snapshot != nil {
-				return snapshot
-			}
-			// If retrieval failed unexpectedly, continue searching older snapshots
-		}
-		if v <= fromVersion {
-			break
-		}
-	}
-
-	return nil
-}
 
 func (c *Consumer) applyDelta(deltaBlob *blob.Blob) error {
 	// Apply delta to current state (simplified)
@@ -240,12 +202,7 @@ func (c *Consumer) applyDelta(deltaBlob *blob.Blob) error {
 	return nil
 }
 
-func (c *Consumer) applyReverseDelta(reverseBlob *blob.Blob) error {
-	// Apply reverse delta to current state (simplified)
-	readState := internal.NewReadState(reverseBlob.FromVersion)
-	c.readEngine.SetCurrentState(readState)
-	return nil
-}
+
 
 // GetCurrentVersion returns the current version
 func (c *Consumer) GetCurrentVersion() int64 {

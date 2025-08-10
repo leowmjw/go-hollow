@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"reflect"
 	"sync"
 	"time"
 
@@ -14,72 +13,7 @@ import (
 	"github.com/leowmjw/go-hollow/producer"
 )
 
-// AnnouncementWatcherAdapter adapts blob.Announcer to implement blob.AnnouncementWatcher
-type AnnouncementWatcherAdapter struct {
-	announcer blob.Announcer
-	// Use goroutineAnnouncer for direct access if available
-	goroutineAnnouncer *blob.GoroutineAnnouncer
-	mutex     sync.RWMutex
-	version   int64
-}
 
-// NewAnnouncementWatcherAdapter creates an adapter that wraps an announcer
-func NewAnnouncementWatcherAdapter(announcer blob.Announcer) *AnnouncementWatcherAdapter {
-	addapter := &AnnouncementWatcherAdapter{
-		announcer: announcer,
-		version:   0,
-	}
-	
-	// If the announcer is a GoroutineAnnouncer, store it directly
-	if ga, ok := announcer.(*blob.GoroutineAnnouncer); ok {
-		addapter.goroutineAnnouncer = ga
-	}
-	
-	return addapter
-}
-
-// UpdateVersion updates the latest known version
-func (a *AnnouncementWatcherAdapter) UpdateVersion(version int64) {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-	if version > a.version {
-		a.version = version
-	}
-}
-
-// GetLatestVersion implements AnnouncementWatcher interface
-func (a *AnnouncementWatcherAdapter) GetLatestVersion() int64 {
-	// Try to get the latest version directly from GoroutineAnnouncer if available
-	// This is more reliable than our internal tracking
-	if a.goroutineAnnouncer != nil {
-		return a.goroutineAnnouncer.GetLatestVersion()
-	}
-	
-	// Fall back to our tracked version
-	a.mutex.RLock()
-	defer a.mutex.RUnlock()
-	return a.version
-}
-
-// Pin implements AnnouncementWatcher interface
-func (a *AnnouncementWatcherAdapter) Pin(version int64) {
-	// Not implemented for this example
-}
-
-// Unpin implements AnnouncementWatcher interface
-func (a *AnnouncementWatcherAdapter) Unpin() {
-	// Not implemented for this example
-}
-
-// IsPinned implements AnnouncementWatcher interface
-func (a *AnnouncementWatcherAdapter) IsPinned() bool {
-	return false
-}
-
-// GetPinnedVersion implements AnnouncementWatcher interface
-func (a *AnnouncementWatcherAdapter) GetPinnedVersion() int64 {
-	return 0
-}
 
 // DataRecord represents a simple data structure for our example
 type DataRecord struct {
@@ -138,8 +72,7 @@ func runMultiWriterZeroCopyDemo(ctx context.Context, blobStore blob.BlobStore, a
 	consumerStats := make(map[string]*ConsumerStats)
 	var statsMutex sync.RWMutex
 	
-	// Create a shared announcement watcher adapter
-	watcherAdapter := NewAnnouncementWatcherAdapter(announcer)
+	// Announcer now directly implements AnnouncementWatcher - no adapter needed!
 
 	// Start multiple writers
 	numWriters := 3
@@ -150,7 +83,7 @@ func runMultiWriterZeroCopyDemo(ctx context.Context, blobStore blob.BlobStore, a
 		wg.Add(1)
 		go func(id string) {
 			defer wg.Done()
-			runWriter(ctx, blobStore, announcer, id, writerStats, &statsMutex, watcherAdapter)
+			runWriter(ctx, blobStore, announcer, id, writerStats, &statsMutex)
 		}(writerID)
 	}
 
@@ -163,7 +96,7 @@ func runMultiWriterZeroCopyDemo(ctx context.Context, blobStore blob.BlobStore, a
 		wg.Add(1)
 		go func(id string) {
 			defer wg.Done()
-			runConsumer(ctx, blobStore, announcer, id, consumerStats, &statsMutex, watcherAdapter)
+			runConsumer(ctx, blobStore, announcer, id, consumerStats, &statsMutex)
 		}(consumerID)
 	}
 
@@ -182,7 +115,7 @@ func runMultiWriterZeroCopyDemo(ctx context.Context, blobStore blob.BlobStore, a
 	printFinalStats(writerStats, consumerStats, &statsMutex)
 }
 
-func runWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, writerID string, stats map[string]*WriterStats, mutex *sync.RWMutex, watcherAdapter *AnnouncementWatcherAdapter) {
+func runWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, writerID string, stats map[string]*WriterStats, mutex *sync.RWMutex) {
 	fmt.Printf("📝 Starting writer: %s\n", writerID)
 
 	// Create producer with zero-copy configuration
@@ -206,8 +139,7 @@ func runWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Ann
 		})
 	})
 	
-	// Update watcher adapter with new version
-	watcherAdapter.UpdateVersion(initialVersion)
+	// Announcer automatically announces new versions - no manual update needed!
 	
 	fmt.Printf("📝 %s produced initial version %d with snapshot\n", writerID, initialVersion)
 	
@@ -243,8 +175,7 @@ func runWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Ann
 				}
 			})
 			
-			// Update watcher adapter with new version
-			watcherAdapter.UpdateVersion(version)
+			// Announcer automatically announces new versions - no manual update needed!
 
 			// Update statistics
 			mutex.Lock()
@@ -259,22 +190,22 @@ func runWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Ann
 	}
 }
 
-func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, consumerID string, stats map[string]*ConsumerStats, mutex *sync.RWMutex, watcherAdapter *AnnouncementWatcherAdapter) {
+func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, consumerID string, stats map[string]*ConsumerStats, mutex *sync.RWMutex) {
 	fmt.Printf("👀 Starting consumer: %s\n", consumerID)
 
 	// Create consumers with initial delay to ensure producers have time to create initial versions
 	time.Sleep(500 * time.Millisecond)
 	
-	// First create a basic consumer with the blob retriever and watcher adapter
+	// First create a basic consumer with the blob retriever and announcer (no adapter needed!)
 	regularConsumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(watcherAdapter),
+		consumer.WithAnnouncer(announcer),
 	)
 	
 	// Create zero-copy consumer using the same pattern
 	zeroCopyConsumer := consumer.NewZeroCopyConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(watcherAdapter),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	ticker := time.NewTicker(800 * time.Millisecond)
@@ -290,8 +221,8 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 			fmt.Printf("👀 Consumer %s stopping (read %d versions)\n", consumerID, stats[consumerID].VersionsRead)
 			return
 		case <-ticker.C:
-			// Try to get latest version from watcher adapter
-			latestVersion := watcherAdapter.GetLatestVersion()
+			// Try to get latest version from announcer directly
+			latestVersion := announcer.GetLatestVersion()
 			if latestVersion <= 0 {
 				// No versions available yet
 				continue
@@ -312,37 +243,8 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 				// Zero-copy read successful
 				se := zeroCopyConsumer.GetStateEngine()
 				if se != nil {
-					recordCount = countRecordsInStateEngine(se)
+					recordCount = se.TotalRecords()
 					zeroCopySuccess = true
-					
-					// If record count is still 0, try using reflection directly on the state engine
-					// This handles zero-copy state engines that might not implement all interfaces
-					if recordCount == 0 {
-						seValue := reflect.ValueOf(se)
-						if seValue.Kind() == reflect.Ptr && !seValue.IsNil() {
-							// Try OrdinalList method
-							ordListMethod := seValue.MethodByName("OrdinalList")
-							if ordListMethod.IsValid() {
-								results := ordListMethod.Call(nil)
-								if len(results) > 0 && results[0].Kind() == reflect.Slice {
-									ordinals := results[0]
-									for i := 0; i < ordinals.Len(); i++ {
-										ordinal := ordinals.Index(i).Interface().(int)
-										
-										// Try TypeCount method
-										typeCountMethod := seValue.MethodByName("TypeCount")
-										if typeCountMethod.IsValid() {
-											args := []reflect.Value{reflect.ValueOf(ordinal)}
-											result := typeCountMethod.Call(args)
-											if len(result) > 0 && result[0].Kind() == reflect.Int {
-												recordCount += int(result[0].Int())
-											}
-										}
-									}
-								}
-							}
-						}
-					}
 				}
 			} else {
 				// Try refreshing to latest if specific version fails
@@ -351,7 +253,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 				if err == nil {
 					se := zeroCopyConsumer.GetStateEngine()
 					if se != nil {
-						recordCount = countRecordsInStateEngine(se)
+						recordCount = se.TotalRecords()
 						zeroCopySuccess = true
 					}
 				} else {
@@ -360,7 +262,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 					if err == nil {
 						se := regularConsumer.GetStateEngine()
 						if se != nil {
-							recordCount = countRecordsInStateEngine(se)
+						recordCount = se.TotalRecords()
 						}
 					}
 				}
@@ -409,126 +311,7 @@ func generateRecords(writerID string, startID int, count int) []DataRecord {
 	return records
 }
 
-func countRecordsInStateEngine(se interface{}) int {
-	if se == nil {
-		return 0
-	}
-	
-	count := 0
-	
-	// First try using interface assertions
-	// Approach 1: Try to access state engine via GetOrdinalIterator
-	if stateEngine, ok := se.(interface{ GetOrdinalIterator() interface{} }); ok {
-		iterator := stateEngine.GetOrdinalIterator()
-		if iterator != nil {
-			if iter, ok := iterator.(interface{ Size() int }); ok {
-				return iter.Size()
-			}
-		}
-	}
-	
-	// Approach 2: Try to access state engine via OrdinalList and TypeCount methods
-	if stateEngine, ok := se.(interface {
-		OrdinalList() []int
-		TypeCount(int) int
-	}); ok {
-		ordinals := stateEngine.OrdinalList()
-		for _, ordinal := range ordinals {
-			count += stateEngine.TypeCount(ordinal)
-		}
-		return count
-	}
-	
-	// Approach 3: Try type-specific methods for DataRecord type
-	if stateEngine, ok := se.(interface{ GetTypeOrdinals(string) interface{} }); ok {
-		// Try for our specific DataRecord type
-		ordinals := stateEngine.GetTypeOrdinals("DataRecord")
-		if ordinals != nil {
-			// Try to get Size method from ordinals
-			if sized, ok := ordinals.(interface{ Size() int }); ok {
-				count += sized.Size()
-			}
-		}
-		
-		// If ordinals didn't work, try getting all type names
-		if typed, ok := se.(interface{ GetAllTypeNames() []string }); ok {
-			for _, typeName := range typed.GetAllTypeNames() {
-				ordinals := stateEngine.GetTypeOrdinals(typeName)
-				if ordinals != nil {
-					if sized, ok := ordinals.(interface{ Size() int }); ok {
-						count += sized.Size()
-					}
-				}
-			}
-		}
-	}
-	
-	// Approach 4: Try using reflection (especially for zero-copy state engines)
-	if count == 0 {
-		seValue := reflect.ValueOf(se)
-		if seValue.Kind() == reflect.Ptr && !seValue.IsNil() {
-			// Attempt to find GetAllTypeNames method first
-			allTypeNamesMethod := seValue.MethodByName("GetAllTypeNames")
-			if allTypeNamesMethod.IsValid() {
-				typeNamesResult := allTypeNamesMethod.Call(nil)
-				if len(typeNamesResult) > 0 && typeNamesResult[0].Kind() == reflect.Slice {
-					typeNames := typeNamesResult[0]
-					
-					for i := 0; i < typeNames.Len(); i++ {
-						typeName := typeNames.Index(i).Interface().(string)
-						
-						// Get ordinals for this type
-						getTypeOrdinalsMethod := seValue.MethodByName("GetTypeOrdinals")
-						if getTypeOrdinalsMethod.IsValid() {
-							args := []reflect.Value{reflect.ValueOf(typeName)}
-							ordinalsResult := getTypeOrdinalsMethod.Call(args)
-							
-							if len(ordinalsResult) > 0 && !ordinalsResult[0].IsNil() {
-								ordinalsObj := ordinalsResult[0].Interface()
-								
-								// Try Size() method
-								ordValue := reflect.ValueOf(ordinalsObj)
-								sizeMethod := ordValue.MethodByName("Size")
-								if sizeMethod.IsValid() {
-									results := sizeMethod.Call(nil)
-									if len(results) > 0 && results[0].Kind() == reflect.Int {
-										count += int(results[0].Int())
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			
-			// Fallback to OrdinalList approach using reflection
-			if count == 0 {
-				ordListMethod := seValue.MethodByName("OrdinalList")
-				if ordListMethod.IsValid() {
-					results := ordListMethod.Call(nil)
-					if len(results) > 0 && results[0].Kind() == reflect.Slice {
-						ordinals := results[0]
-						typeCountMethod := seValue.MethodByName("TypeCount")
-						
-						if typeCountMethod.IsValid() {
-							for i := 0; i < ordinals.Len(); i++ {
-								ordinal := ordinals.Index(i).Interface().(int)
-								args := []reflect.Value{reflect.ValueOf(ordinal)}
-								result := typeCountMethod.Call(args)
-								
-								if len(result) > 0 && result[0].Kind() == reflect.Int {
-									count += int(result[0].Int())
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	
-	return count
-}
+
 
 func reportStatistics(ctx context.Context, writerStats map[string]*WriterStats, consumerStats map[string]*ConsumerStats, mutex *sync.RWMutex) {
 	ticker := time.NewTicker(2 * time.Second)

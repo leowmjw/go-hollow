@@ -6,7 +6,10 @@ import (
 
 // Announcer interface for announcing new versions
 type Announcer interface {
+	AnnouncementWatcher
 	Announce(version int64) error
+	Subscribe(ch chan int64)
+	Unsubscribe(ch chan int64)
 }
 
 // AnnouncementWatcher interface for watching announcements
@@ -92,15 +95,15 @@ func (a *InMemoryAnnouncement) GetPinnedVersion() int64 {
 	return a.pinnedVersion
 }
 
-// AddWatcher adds a channel to receive version notifications
-func (a *InMemoryAnnouncement) AddWatcher(ch chan int64) {
+// Subscribe adds a channel to receive version notifications
+func (a *InMemoryAnnouncement) Subscribe(ch chan int64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.watchers = append(a.watchers, ch)
 }
 
-// RemoveWatcher removes a channel from notifications
-func (a *InMemoryAnnouncement) RemoveWatcher(ch chan int64) {
+// Unsubscribe removes a channel from notifications
+func (a *InMemoryAnnouncement) Unsubscribe(ch chan int64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	
@@ -110,4 +113,14 @@ func (a *InMemoryAnnouncement) RemoveWatcher(ch chan int64) {
 			break
 		}
 	}
+}
+
+// AddWatcher adds a channel to receive version notifications (deprecated, use Subscribe)
+func (a *InMemoryAnnouncement) AddWatcher(ch chan int64) {
+	a.Subscribe(ch)
+}
+
+// RemoveWatcher removes a channel from notifications (deprecated, use Unsubscribe)
+func (a *InMemoryAnnouncement) RemoveWatcher(ch chan int64) {
+	a.Unsubscribe(ch)
 }

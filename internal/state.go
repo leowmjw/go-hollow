@@ -581,6 +581,7 @@ type ReadStateEngine struct {
 	currentState *ReadState
 	typeFilter   *TypeFilter
 	memoryMode   MemoryMode
+	totalRecords int32 // atomic counter for total records
 	mutex        sync.RWMutex
 }
 
@@ -611,6 +612,15 @@ func (rse *ReadStateEngine) SetCurrentState(state *ReadState) {
 		rse.currentState.Invalidate()
 	}
 	rse.currentState = state
+	
+	// Update total records count
+	totalCount := 0
+	if state != nil {
+		for _, records := range state.data {
+			totalCount += len(records)
+		}
+	}
+	atomic.StoreInt32(&rse.totalRecords, int32(totalCount))
 }
 
 func (rse *ReadStateEngine) HasType(typeName string) bool {
@@ -621,6 +631,11 @@ func (rse *ReadStateEngine) HasType(typeName string) bool {
 	}
 	data := rse.currentState.data[typeName]
 	return data != nil
+}
+
+// TotalRecords returns the total number of records across all types
+func (rse *ReadStateEngine) TotalRecords() int {
+	return int(atomic.LoadInt32(&rse.totalRecords))
 }
 
 // TypeFilter for selective type loading

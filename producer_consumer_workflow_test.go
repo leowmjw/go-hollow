@@ -30,7 +30,7 @@ func TestProducerConsumerWorkflow(t *testing.T) {
 	// Create consumer
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		// Disable auto-refresh for controlled testing
 	)
 
 	ctx := context.Background()
@@ -150,7 +150,7 @@ func TestProducerConsumerMultipleVersions(t *testing.T) {
 
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		// Disable auto-refresh for controlled testing
 	)
 
 	ctx := context.Background()
@@ -248,7 +248,7 @@ func TestConsumerErrorHandling(t *testing.T) {
 
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		// Disable auto-refresh for controlled testing
 	)
 
 	ctx := context.Background()
