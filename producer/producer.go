@@ -349,6 +349,7 @@ func (p *Producer) getSerializer() internal.Serializer {
 		return p.serializer
 	}
 	// Default to traditional serialization for backward compatibility
+	// Production code should explicitly use WithSerializationMode(ZeroCopyMode) 
 	return internal.NewTraditionalSerializer()
 }
 

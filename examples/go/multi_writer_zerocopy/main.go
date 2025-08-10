@@ -197,9 +197,11 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 	time.Sleep(500 * time.Millisecond)
 	
 	// First create a basic consumer with the blob retriever and announcer (no adapter needed!)
+	// Use Cap'n Proto serializer to match the producer configuration
 	regularConsumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
 		consumer.WithAnnouncer(announcer),
+		consumer.WithSerializer(internal.NewCapnProtoSerializer()),
 	)
 	
 	// Create zero-copy consumer using the same pattern

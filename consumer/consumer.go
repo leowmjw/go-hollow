@@ -17,6 +17,7 @@ type Consumer struct {
 	memoryMode     internal.MemoryMode
 	autoRefresh    bool
 	watcherChannel chan int64
+	serializer     internal.Serializer
 }
 
 // ConsumerOption configures a Consumer
@@ -56,6 +57,12 @@ func WithAnnouncementWatcher(watcher interface{}) ConsumerOption {
 	}
 }
 
+func WithSerializer(serializer internal.Serializer) ConsumerOption {
+	return func(c *Consumer) {
+		c.serializer = serializer
+	}
+}
+
 func WithTypeFilter(filter *internal.TypeFilter) ConsumerOption {
 	return func(c *Consumer) {
 		c.typeFilter = filter
@@ -74,6 +81,7 @@ func NewConsumer(opts ...ConsumerOption) *Consumer {
 		readEngine:     internal.NewReadStateEngine(),
 		memoryMode:     internal.HeapMemory,
 		watcherChannel: make(chan int64, 10),
+		serializer:     internal.NewTraditionalSerializer(), // Default to traditional for compatibility
 	}
 
 	for _, opt := range opts {
@@ -192,29 +200,93 @@ func (c *Consumer) TriggerRefreshTo(ctx context.Context, targetVersion int64) er
 }
 
 func (c *Consumer) loadSnapshot(blob *blob.Blob) error {
-	// Deserialize blob data (simplified implementation)
-	readState := internal.NewReadState(blob.Version)
+	// Use the real serializer to deserialize the blob data
+	ctx := context.Background()
+	deserializedData, err := c.serializer.Deserialize(ctx, blob.Data)
+	if err != nil {
+		return fmt.Errorf("failed to deserialize snapshot blob: %w", err)
+	}
 
-	// In a real implementation, would deserialize Cap'n Proto data
-	// For testing purposes, simulate loading data based on the blob
-	if string(blob.Data) != "map[]" { // If there's actual data
-		// Simulate loading types - for type filtering test
-		readState.AddMockType("String")
-		if c.typeFilter == nil || c.typeFilter.ShouldInclude("Integer") {
-			readState.AddMockType("Integer")
+	// Create read state from deserialized data
+	readState := internal.NewReadState(blob.Version)
+	
+	// Get the traditional data format for compatibility with existing API
+	data := deserializedData.GetData()
+	
+	// Apply type filtering if configured
+	readStateData := readState.GetAllData()
+	for typeName, records := range data {
+		if c.typeFilter == nil || c.typeFilter.ShouldInclude(typeName) {
+			// Add the actual deserialized data to the read state
+			readStateData[typeName] = records
 		}
 	}
 
 	c.readEngine.SetCurrentState(readState)
-
 	return nil
 }
 
 
 
 func (c *Consumer) applyDelta(deltaBlob *blob.Blob) error {
-	// Apply delta to current state (simplified)
+	// Get current state to merge delta into
+	currentState := c.readEngine.GetCurrentState()
+	
+	// Deserialize the delta using the real serializer
+	ctx := context.Background()
+	deltaSet, err := c.serializer.DeserializeDelta(ctx, deltaBlob.Data)
+	if err != nil {
+		return fmt.Errorf("failed to deserialize delta blob: %w", err)
+	}
+	
+	// Create new state with delta version
 	readState := internal.NewReadState(deltaBlob.ToVersion)
+	newData := readState.GetAllData()
+	
+	// If we have a current state, copy its data first (state accumulation)
+	if currentState != nil && !currentState.IsInvalidated() {
+		currentData := currentState.GetAllData()
+		for typeName, records := range currentData {
+			// Copy existing records to maintain state accumulation
+			newData[typeName] = make([]interface{}, len(records))
+			copy(newData[typeName], records)
+		}
+	}
+	
+	// Apply the real delta changes
+	for typeName, typeDelta := range deltaSet.Deltas {
+		// Skip types that are filtered out
+		if c.typeFilter != nil && !c.typeFilter.ShouldInclude(typeName) {
+			continue
+		}
+		
+		// Ensure we have a slice for this type
+		if newData[typeName] == nil {
+			newData[typeName] = make([]interface{}, 0)
+		}
+		
+		// Apply delta records for this type
+		for _, deltaRecord := range typeDelta.Records {
+			switch deltaRecord.Operation {
+			case internal.DeltaAdd:
+				// Add new record
+				newData[typeName] = append(newData[typeName], deltaRecord.Value)
+			case internal.DeltaUpdate:
+				// Update existing record (simplified - would need ordinal tracking)
+				if deltaRecord.Ordinal < len(newData[typeName]) {
+					newData[typeName][deltaRecord.Ordinal] = deltaRecord.Value
+				}
+			case internal.DeltaDelete:
+				// Delete record (simplified - would need ordinal tracking)
+				if deltaRecord.Ordinal < len(newData[typeName]) {
+					// Remove by replacing with nil or shrinking slice
+					newData[typeName] = append(newData[typeName][:deltaRecord.Ordinal], 
+						newData[typeName][deltaRecord.Ordinal+1:]...)
+				}
+			}
+		}
+	}
+	
 	c.readEngine.SetCurrentState(readState)
 	return nil
 }
