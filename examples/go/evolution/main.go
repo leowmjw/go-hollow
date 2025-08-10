@@ -61,7 +61,7 @@ func main() {
 	slog.Info("\n--- Phase 2: Consumer reads v1 data ---")
 	consumer1 := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	if err := consumer1.TriggerRefreshTo(ctx, int64(version1)); err != nil {
@@ -97,7 +97,7 @@ func main() {
 	slog.Info("\n--- Phase 5: New v2 consumer reads v1 and v2 data (forward compatibility) ---")
 	consumer2 := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	// Test reading old v1 data with new consumer

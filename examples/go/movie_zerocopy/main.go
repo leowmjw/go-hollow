@@ -78,23 +78,18 @@ func demonstrateLargeDatasetProcessing(ctx context.Context, blobStore blob.BlobS
 	// 3. Create multiple consumers (simulating different analytics services)
 	slog.Info("Creating multiple zero-copy consumers for different analytics...")
 	
-	// Convert announcer to AnnouncementWatcher interface
-	watcher, ok := announcer.(blob.AnnouncementWatcher)
-	if !ok {
-		slog.Error("Announcer does not implement AnnouncementWatcher interface")
-		return
-	}
+
 
 	consumers := []struct {
 		name     string
 		consumer *zerocopy.ZeroCopyReader
 		purpose  string
 	}{
-		{"RecommendationEngine", zerocopy.NewZeroCopyReader(blobStore, watcher), "Generate personalized recommendations"},
-		{"SearchIndexer", zerocopy.NewZeroCopyReader(blobStore, watcher), "Build search indexes"},
-		{"MetricsCalculator", zerocopy.NewZeroCopyReader(blobStore, watcher), "Calculate catalog statistics"},
-		{"GenreAnalyzer", zerocopy.NewZeroCopyReader(blobStore, watcher), "Analyze genre trends"},
-		{"QualityScorer", zerocopy.NewZeroCopyReader(blobStore, watcher), "Score movie quality"},
+		{"RecommendationEngine", zerocopy.NewZeroCopyReader(blobStore, announcer), "Generate personalized recommendations"},
+		{"SearchIndexer", zerocopy.NewZeroCopyReader(blobStore, announcer), "Build search indexes"},
+		{"MetricsCalculator", zerocopy.NewZeroCopyReader(blobStore, announcer), "Calculate catalog statistics"},
+		{"GenreAnalyzer", zerocopy.NewZeroCopyReader(blobStore, announcer), "Analyze genre trends"},
+		{"QualityScorer", zerocopy.NewZeroCopyReader(blobStore, announcer), "Score movie quality"},
 	}
 
 	// 4. All consumers read the same data simultaneously (demonstrating memory efficiency)

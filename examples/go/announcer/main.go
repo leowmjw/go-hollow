@@ -79,14 +79,31 @@ func demonstratePubSub(announcer *blob.GoroutineAnnouncer) {
 	slog.Info("Testing pub/sub pattern with multiple subscribers")
 
 	// Create multiple subscriber channels
-	subscriber1 := make(chan int64, 10)
-	subscriber2 := make(chan int64, 10)
-	subscriber3 := make(chan int64, 10)
+	// Subscribe with buffer size
+	subscription1, err := announcer.Subscribe(10)
+	if err != nil {
+		slog.Error("Failed to create subscription1", "error", err)
+		return
+	}
+	defer subscription1.Close()
+	
+	subscription2, err := announcer.Subscribe(10)
+	if err != nil {
+		slog.Error("Failed to create subscription2", "error", err)
+		return
+	}
+	defer subscription2.Close()
+	
+	subscription3, err := announcer.Subscribe(10)
+	if err != nil {
+		slog.Error("Failed to create subscription3", "error", err)
+		return
+	}
+	defer subscription3.Close()
 
-	// Subscribe all channels
-	announcer.Subscribe(subscriber1)
-	announcer.Subscribe(subscriber2)
-	announcer.Subscribe(subscriber3)
+	subscriber1 := subscription1.Updates()
+	subscriber2 := subscription2.Updates()
+	subscriber3 := subscription3.Updates()
 
 	slog.Info("Subscribed 3 channels", "total_subscribers", announcer.GetSubscriberCount())
 
@@ -274,17 +291,17 @@ func demonstrateMultiConsumerCoordination(ctx context.Context, blobStore blob.Bl
 	// Create multiple consumers with different refresh strategies
 	consumer1 := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		consumer.WithAnnouncer(announcer),
 	)
 	
 	consumer2 := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	consumer3 := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	// Producer creates some data
@@ -574,12 +591,12 @@ func demonstrateRealIntegration(ctx context.Context, blobStore blob.BlobStore, a
 	// Create multiple consumers with different behaviors
 	immediateConsumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	delayedConsumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	// Scenario: Movie database with real-time updates

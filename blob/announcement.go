@@ -4,52 +4,83 @@ import (
 	"sync"
 )
 
-// Announcer interface for announcing new versions
+// Announcer publishes new versions (producer-side interface)
 type Announcer interface {
-	AnnouncementWatcher
 	Announce(version int64) error
-	Subscribe(ch chan int64)
-	Unsubscribe(ch chan int64)
 }
 
-// AnnouncementWatcher interface for watching announcements
-type AnnouncementWatcher interface {
-	GetLatestVersion() int64
-	Pin(version int64)
-	Unpin()
-	IsPinned() bool
-	GetPinnedVersion() int64
+// VersionCursor provides read/update control over a version pointer (consumer-side interface)
+type VersionCursor interface {
+	Latest() int64                       // Get the current version (respects pinning)
+	Pin(version int64)                   // Fix the cursor to a specific version
+	Unpin()                             // Release the pin, return to tracking latest
+	Pinned() (version int64, ok bool)    // Get pinned version if pinned
 }
 
-// InMemoryAnnouncement is an in-memory implementation of announcer and watcher
-type InMemoryAnnouncement struct {
+// Subscription represents an active subscription to version updates
+type Subscription interface {
+	Updates() <-chan int64  // Read-only channel for version updates
+	Close()                 // Terminate the subscription and free resources
+}
+
+// Subscribable can create subscriptions for version updates
+type Subscribable interface {
+	Subscribe(bufferSize int) (Subscription, error)
+}
+
+// subscription implements the Subscription interface
+type subscription struct {
+	ch   chan int64
+	feed *InMemoryFeed
+}
+
+func (s *subscription) Updates() <-chan int64 {
+	return s.ch
+}
+
+func (s *subscription) Close() {
+	s.feed.mu.Lock()
+	defer s.feed.mu.Unlock()
+	
+	delete(s.feed.subs, s)
+	close(s.ch)
+}
+
+// InMemoryFeed is an in-memory implementation that composes all announcement interfaces
+type InMemoryFeed struct {
 	mu              sync.RWMutex
 	latestVersion   int64
 	pinnedVersion   int64
 	isPinned        bool
-	watchers        []chan int64
+	subs            map[*subscription]struct{} // Active subscriptions
 }
 
-// NewInMemoryAnnouncement creates a new in-memory announcement system
-func NewInMemoryAnnouncement() *InMemoryAnnouncement {
-	return &InMemoryAnnouncement{
-		watchers: make([]chan int64, 0),
+// NewInMemoryFeed creates a new in-memory announcement system
+func NewInMemoryFeed() *InMemoryFeed {
+	return &InMemoryFeed{
+		subs: make(map[*subscription]struct{}),
 	}
 }
 
-func (a *InMemoryAnnouncement) Announce(version int64) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+// NewInMemoryAnnouncement creates a new in-memory announcement system (deprecated, use NewInMemoryFeed)
+func NewInMemoryAnnouncement() *InMemoryFeed {
+	return NewInMemoryFeed()
+}
+
+// Announcer interface implementation
+func (f *InMemoryFeed) Announce(version int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	
-	if version > a.latestVersion {
-		a.latestVersion = version
+	if version > f.latestVersion {
+		f.latestVersion = version
 		
-		// Notify watchers
-		for _, watcher := range a.watchers {
+		// Notify all subscribers
+		for sub := range f.subs {
 			select {
-			case watcher <- version:
+			case sub.ch <- version:
 			default:
-				// Channel is full, skip
+				// Channel is full, skip (non-blocking)
 			}
 		}
 	}
@@ -57,70 +88,95 @@ func (a *InMemoryAnnouncement) Announce(version int64) error {
 	return nil
 }
 
-func (a *InMemoryAnnouncement) GetLatestVersion() int64 {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+// VersionCursor interface implementation
+func (f *InMemoryFeed) Latest() int64 {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
 	
-	if a.isPinned {
-		return a.pinnedVersion
+	if f.isPinned {
+		return f.pinnedVersion
 	}
-	return a.latestVersion
+	return f.latestVersion
 }
 
-func (a *InMemoryAnnouncement) Pin(version int64) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (f *InMemoryFeed) Pin(version int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	
-	a.isPinned = true
-	a.pinnedVersion = version
+	f.isPinned = true
+	f.pinnedVersion = version
 }
 
-func (a *InMemoryAnnouncement) Unpin() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (f *InMemoryFeed) Unpin() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	
-	a.isPinned = false
-	a.pinnedVersion = 0
+	f.isPinned = false
+	f.pinnedVersion = 0
 }
 
-func (a *InMemoryAnnouncement) IsPinned() bool {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.isPinned
+func (f *InMemoryFeed) Pinned() (version int64, ok bool) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.pinnedVersion, f.isPinned
 }
 
-func (a *InMemoryAnnouncement) GetPinnedVersion() int64 {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.pinnedVersion
-}
-
-// Subscribe adds a channel to receive version notifications
-func (a *InMemoryAnnouncement) Subscribe(ch chan int64) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.watchers = append(a.watchers, ch)
-}
-
-// Unsubscribe removes a channel from notifications
-func (a *InMemoryAnnouncement) Unsubscribe(ch chan int64) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+// Subscribable interface implementation
+func (f *InMemoryFeed) Subscribe(bufferSize int) (Subscription, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	
-	for i, watcher := range a.watchers {
-		if watcher == ch {
-			a.watchers = append(a.watchers[:i], a.watchers[i+1:]...)
+	sub := &subscription{
+		ch:   make(chan int64, bufferSize),
+		feed: f,
+	}
+	f.subs[sub] = struct{}{}
+	
+	return sub, nil
+}
+
+// Backward compatibility methods for old interface
+
+// GetLatestVersion is deprecated, use Latest() instead
+func (f *InMemoryFeed) GetLatestVersion() int64 {
+	return f.Latest()
+}
+
+// IsPinned is deprecated, use Pinned() instead
+func (f *InMemoryFeed) IsPinned() bool {
+	_, ok := f.Pinned()
+	return ok
+}
+
+// GetPinnedVersion is deprecated, use Pinned() instead
+func (f *InMemoryFeed) GetPinnedVersion() int64 {
+	version, _ := f.Pinned()
+	return version
+}
+
+// SubscribeChannel is deprecated for direct channel usage, use Subscribe(bufferSize) instead
+func (f *InMemoryFeed) SubscribeChannel(ch chan int64) {
+	// This is a legacy method - consumers should use the new Subscribe(bufferSize) method
+	// For backward compatibility, we'll store this channel in a simple way
+	// Note: This doesn't integrate well with the new subscription system
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	
+	// Create a fake subscription to maintain the channel
+	sub := &subscription{ch: ch, feed: f}
+	f.subs[sub] = struct{}{}
+}
+
+// Unsubscribe is deprecated
+func (f *InMemoryFeed) Unsubscribe(ch chan int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	
+	// Find and remove the subscription with this channel
+	for sub := range f.subs {
+		if sub.ch == ch {
+			delete(f.subs, sub)
 			break
 		}
 	}
-}
-
-// AddWatcher adds a channel to receive version notifications (deprecated, use Subscribe)
-func (a *InMemoryAnnouncement) AddWatcher(ch chan int64) {
-	a.Subscribe(ch)
-}
-
-// RemoveWatcher removes a channel from notifications (deprecated, use Unsubscribe)
-func (a *InMemoryAnnouncement) RemoveWatcher(ch chan int64) {
-	a.Unsubscribe(ch)
 }

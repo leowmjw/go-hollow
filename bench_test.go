@@ -133,7 +133,7 @@ func BenchmarkAnnouncerThroughput(b *testing.B) {
 	subscribers := make([]chan int64, numSubscribers)
 	for i := 0; i < numSubscribers; i++ {
 		subscribers[i] = make(chan int64, 1000)
-		announcer.Subscribe(subscribers[i])
+		announcer.SubscribeChannel(subscribers[i])
 	}
 	defer func() {
 		for _, sub := range subscribers {

@@ -171,7 +171,7 @@ func runConsumer(storeType string, version int64, verbose bool) {
 	// Create consumer
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	ctx := context.Background()

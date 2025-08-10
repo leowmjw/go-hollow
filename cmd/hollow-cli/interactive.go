@@ -19,7 +19,7 @@ func runInteractiveMode(blobStore blob.BlobStore, announcer blob.Announcer, prod
 	// Create zero-copy consumer for reading existing data
 	zeroCopyConsumer := consumer.NewZeroCopyConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer.(blob.AnnouncementWatcher)),
+		consumer.WithAnnouncer(announcer),
 	)
 	fmt.Println("\n=== Interactive Mode (Memory Storage) ===")
 	fmt.Printf("Data is now available in memory. Current version: %d\n", currentVersion)
@@ -239,17 +239,10 @@ func runConsumerInMemory(blobStore blob.BlobStore, announcer blob.Announcer, ver
 		fmt.Printf("Starting in-memory consumer for version: %d\n", version)
 	}
 
-	// Convert announcer to AnnouncementWatcher interface
-	watcher, ok := announcer.(blob.AnnouncementWatcher)
-	if !ok {
-		fmt.Printf("Error: Announcer does not implement AnnouncementWatcher interface\n")
-		return
-	}
-
 	// Create consumer with the same blob store and announcer
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(watcher),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	ctx := context.Background()

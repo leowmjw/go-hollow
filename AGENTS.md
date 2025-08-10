@@ -9,7 +9,120 @@ This document captures key learnings, patterns, and insights from implementing g
 **Go Version**: 1.24.5
 **Status**: ✅ Complete through Phase 6 (Performance & Production Hardening) + **All NEXT STEPS Implemented** + **Zero-Copy Core Integration Complete** + **Cap'n Proto Schema Parsing Overhaul Complete** + **🔑 Primary Key Support with Delta Serialization Complete** + **Advanced Zero-Copy Stress Test Fixed** + **🚀 Consumer Architecture Simplified & Performance Validated**
 
-## 🔄 Agent Update — 2025-08-10T01:45:22+08:00
+## 🔄 Agent Update — 2025-08-10T02:30:15+08:00
+
+**Status Update**: ✅ Go interface refactoring complete - idiomatic separation of producer/consumer concerns achieved!
+
+### Go Interface Architecture Refactoring Complete
+
+#### Key Refactoring Achievements
+
+1. **Separated Interface Concerns**: Cleanly separated producer (`Announcer`), consumer cursor (`VersionCursor`), and subscription (`Subscription`, `Subscribable`) concerns into distinct, well-named Go interfaces following composition principles.
+
+2. **Eliminated Mixed Responsibilities**: The old `Announcer` interface was mixing producer and consumer concerns. Now each interface has a single, clear responsibility:
+   ```go
+   // Producer-side interface
+   type Announcer interface {
+       Announce(version int64) error
+   }
+   
+   // Consumer-side cursor interface  
+   type VersionCursor interface {
+       Latest() int64
+       Pin(version int64)
+       Unpin()
+       Pinned() (version int64, ok bool)
+   }
+   
+   // Subscription management
+   type Subscribable interface {
+       Subscribe(bufferSize int) (Subscription, error)
+   }
+   ```
+
+3. **Fixed Method Naming**: Replaced confusing method names like `GetLatestVersion()` with idiomatic Go names like `Latest()`, improving API clarity and following Go conventions.
+
+4. **Composition Over Inheritance**: The `GoroutineAnnouncer` and `InMemoryFeed` now correctly implement multiple interfaces through composition, demonstrating proper Go interface design.
+
+#### Implementation Details
+
+**Before (Mixed Concerns)**:
+```go
+// Announcer was doing both producer and consumer work
+type Announcer interface {
+    Announce(version int64) error
+    GetLatestVersion() int64  // Consumer concern!
+    Subscribe(ch chan int64)  // Subscription concern!
+}
+```
+
+**After (Clean Separation)**:
+```go
+// Producer only announces new versions
+type Announcer interface {
+    Announce(version int64) error
+}
+
+// Consumer tracks and controls version cursor
+type VersionCursor interface {
+    Latest() int64
+    Pin(version int64)
+    Unpin()
+    Pinned() (version int64, ok bool)
+}
+
+// Subscription creates managed subscriptions
+type Subscribable interface {
+    Subscribe(bufferSize int) (Subscription, error)
+}
+```
+
+#### Migration and Compatibility
+
+1. **Backward Compatibility Maintained**: Created deprecated `WithAnnouncementWatcher()` method that provides a migration path for existing code.
+
+2. **Example Updates Completed**: Updated 11+ examples to use the new `WithAnnouncer()` pattern instead of deprecated `WithAnnouncementWatcher()`.
+
+3. **Example Testing Simplified**: Cleaned up all binary files from examples directories. Examples now use `go run .` pattern for testing - no more stray binaries to manage.
+
+4. **Method Call Updates**: 
+   - `announcer.Subscribe(ch)` → `announcer.SubscribeChannel(ch)`
+   - `announcer.GetLatestVersion()` → `cursor.Latest()`
+   - Type assertions updated to use correct interfaces
+
+#### Compilation and Testing
+
+1. **All Compilation Issues Resolved**: Fixed undefined `AnnouncementWatcher` references across the codebase, including:
+   - Core library files
+   - CLI tools
+   - Integration tests
+   - All examples
+
+2. **Goroutine Subscription Fixes**: Resolved panic issues with double-closing channels by adding proper close guards in the subscription implementation.
+
+3. **Full Test Suite Passing**: `go test ./...` succeeds across the entire codebase, validating that the refactoring maintains all existing functionality.
+
+#### Performance Validation Maintained
+
+**Critical Concern Addressed**: Ensured that the performance benefits of the `planBlobs()` approach were maintained through the interface refactoring.
+
+**Validation Results**:
+- ✅ Benchmarks still show efficient O(distance_to_snapshot) scaling
+- ✅ No expensive `ListVersions()` calls introduced
+- ✅ Push-based subscription updates preserved
+- ✅ Zero-copy performance characteristics maintained
+
+#### Architectural Lessons
+
+1. **Interface Segregation Principle**: Breaking down large interfaces into focused, single-responsibility interfaces improves code clarity and testability.
+
+2. **Go Composition Patterns**: Using interface composition (`GoroutineAnnouncer` implements `Announcer`, `VersionCursor`, and `Subscribable`) is more idiomatic than inheritance-style patterns.
+
+3. **Deprecation Strategy**: Providing deprecated methods with clear migration paths allows gradual adoption of new APIs without breaking existing code.
+
+4. **Method Naming Consistency**: Following Go conventions (short, clear names without redundant prefixes) improves API usability.
+
+## 🔄 Previous Update — 2025-08-10T01:45:22+08:00
 
 **Status Update**: ✅ Consumer architecture dramatically simplified - adapter pyramid eliminated, ~500 lines of complex code removed!
 
@@ -625,6 +738,51 @@ func (s *S3BlobStore) retrieveBlob(objectName string, blobType BlobType, version
 ```
 
 **Pattern**: Cache-first with graceful fallback and separate read/write locks
+
+## 📋 Example Testing & Development
+
+### Running Examples
+
+**Learning**: Use `go run .` instead of building binaries for example testing
+
+```bash
+# ✅ GOOD: Run examples directly without creating binaries
+cd examples/go/commerce_zerocopy
+go run .
+
+cd examples/go/multi_writer_zerocopy  
+go run .
+
+cd examples/go/advanced_zerocopy_stress
+go run .
+```
+
+**Why this approach is better**:
+- **No binary cleanup needed**: Avoid accumulating stray binaries in example directories
+- **Faster iteration**: No separate build step required
+- **Cleaner repository**: Examples directory stays clean with only source files
+- **Cross-platform**: Works the same on all operating systems
+
+**Development Pattern**:
+```bash
+# Test example functionality
+cd examples/go/<example-name>
+go run .
+
+# For examples with parameters
+go run . --help  # See available options
+go run . --verbose --writers=5
+
+# For stress testing
+go run . 2>&1 | grep "Error\|Panic\|Fatal"  # Check for issues
+```
+
+**Example Directory Structure** (Clean):
+```
+examples/go/commerce_zerocopy/
+├── main.go          # Source code only
+└── (no binaries!)   # Keep it clean!
+```
 
 ## 🧪 Testing Strategies
 

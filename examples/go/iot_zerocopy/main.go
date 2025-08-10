@@ -175,58 +175,54 @@ func demonstrateHighThroughputProcessing(ctx context.Context, blobStore blob.Blo
 }
 
 func createStreamProcessingPipeline(blobStore blob.BlobStore, announcer blob.Announcer) *DataIngestionPipeline {
-	// Convert announcer to AnnouncementWatcher interface
-	watcher, ok := announcer.(blob.AnnouncementWatcher)
-	if !ok {
-		panic("Announcer does not implement AnnouncementWatcher interface")
-	}
+
 
 	processors := []StreamProcessor{
 		{
 			name:        "AnomalyDetector",
-			reader:      zerocopy.NewZeroCopyReader(blobStore, watcher),
+			reader:      zerocopy.NewZeroCopyReader(blobStore, announcer),
 			processor:   processAnomalyDetection,
 			description: "Detect anomalies in sensor readings",
 		},
 		{
 			name:        "MetricsAggregator",
-			reader:      zerocopy.NewZeroCopyReader(blobStore, watcher),
+			reader:      zerocopy.NewZeroCopyReader(blobStore, announcer),
 			processor:   processMetricsAggregation,
 			description: "Aggregate metrics for time-series analysis",
 		},
 		{
 			name:        "AlertProcessor",
-			reader:      zerocopy.NewZeroCopyReader(blobStore, watcher),
+			reader:      zerocopy.NewZeroCopyReader(blobStore, announcer),
 			processor:   processAlertGeneration,
 			description: "Generate and manage alerts",
 		},
 		{
 			name:        "DeviceHealthMonitor",
-			reader:      zerocopy.NewZeroCopyReader(blobStore, watcher),
+			reader:      zerocopy.NewZeroCopyReader(blobStore, announcer),
 			processor:   processDeviceHealthMonitoring,
 			description: "Monitor device health and connectivity",
 		},
 		{
 			name:        "DataQualityChecker",
-			reader:      zerocopy.NewZeroCopyReader(blobStore, watcher),
+			reader:      zerocopy.NewZeroCopyReader(blobStore, announcer),
 			processor:   processDataQualityChecking,
 			description: "Validate data quality and completeness",
 		},
 		{
 			name:        "RealTimeAnalytics",
-			reader:      zerocopy.NewZeroCopyReader(blobStore, watcher),
+			reader:      zerocopy.NewZeroCopyReader(blobStore, announcer),
 			processor:   processRealTimeAnalytics,
 			description: "Generate real-time analytics dashboards",
 		},
 		{
 			name:        "EventCorrelator",
-			reader:      zerocopy.NewZeroCopyReader(blobStore, watcher),
+			reader:      zerocopy.NewZeroCopyReader(blobStore, announcer),
 			processor:   processEventCorrelation,
 			description: "Correlate events across multiple devices",
 		},
 		{
 			name:        "PredictiveMaintenance",
-			reader:      zerocopy.NewZeroCopyReader(blobStore, watcher),
+			reader:      zerocopy.NewZeroCopyReader(blobStore, announcer),
 			processor:   processPredictiveMaintenance,
 			description: "Predict maintenance needs",
 		},

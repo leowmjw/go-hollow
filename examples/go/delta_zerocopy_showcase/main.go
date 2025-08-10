@@ -53,7 +53,7 @@ func main() {
 	cons := consumer.NewZeroCopyConsumerWithOptions(
 		[]consumer.ConsumerOption{
 			consumer.WithBlobRetriever(blobStore),
-			consumer.WithAnnouncementWatcher(announcer),
+			consumer.WithAnnouncer(announcer),
 		},
 		[]consumer.ZeroCopyConsumerOption{
 			consumer.WithZeroCopySerializationMode(internal.ZeroCopyMode),

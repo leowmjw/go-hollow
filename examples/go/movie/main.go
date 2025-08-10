@@ -65,7 +65,7 @@ func main() {
 	// Create consumer
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	// Trigger refresh to latest version

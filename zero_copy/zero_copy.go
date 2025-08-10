@@ -20,10 +20,10 @@ type ZeroCopyReader struct {
 }
 
 // NewZeroCopyReader creates a new zero-copy reader
-func NewZeroCopyReader(blobRetriever blob.BlobRetriever, watcher blob.AnnouncementWatcher) *ZeroCopyReader {
+func NewZeroCopyReader(blobRetriever blob.BlobRetriever, announcer blob.Announcer) *ZeroCopyReader {
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobRetriever),
-		consumer.WithAnnouncementWatcher(watcher),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	return &ZeroCopyReader{

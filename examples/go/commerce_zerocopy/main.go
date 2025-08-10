@@ -114,12 +114,7 @@ func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.Blo
 	// 3. Simulate multiple microservices consuming the same data simultaneously
 	slog.Info("Starting multiple microservices as zero-copy consumers...")
 	
-	// Convert announcer to AnnouncementWatcher interface
-	watcher, ok := announcer.(blob.AnnouncementWatcher)
-	if !ok {
-		slog.Error("Announcer does not implement AnnouncementWatcher interface")
-		return
-	}
+
 
 	microservices := []struct {
 		name        string
@@ -127,14 +122,14 @@ func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.Blo
 		description string
 		workload    string
 	}{
-		{"OrderProcessingService", zerocopy.NewZeroCopyReader(blobStore, watcher), "Process and validate orders", "orders"},
-		{"CustomerAnalyticsService", zerocopy.NewZeroCopyReader(blobStore, watcher), "Analyze customer behavior", "customers"},
-		{"InventoryManagementService", zerocopy.NewZeroCopyReader(blobStore, watcher), "Track product inventory", "products"},
-		{"RecommendationService", zerocopy.NewZeroCopyReader(blobStore, watcher), "Generate product recommendations", "all"},
-		{"FraudDetectionService", zerocopy.NewZeroCopyReader(blobStore, watcher), "Detect fraudulent transactions", "orders"},
-		{"ReportingService", zerocopy.NewZeroCopyReader(blobStore, watcher), "Generate business reports", "all"},
-		{"PricingService", zerocopy.NewZeroCopyReader(blobStore, watcher), "Calculate dynamic pricing", "products"},
-		{"NotificationService", zerocopy.NewZeroCopyReader(blobStore, watcher), "Send customer notifications", "customers"},
+		{"OrderProcessingService", zerocopy.NewZeroCopyReader(blobStore, announcer), "Process and validate orders", "orders"},
+		{"CustomerAnalyticsService", zerocopy.NewZeroCopyReader(blobStore, announcer), "Analyze customer behavior", "customers"},
+		{"InventoryManagementService", zerocopy.NewZeroCopyReader(blobStore, announcer), "Track product inventory", "products"},
+		{"RecommendationService", zerocopy.NewZeroCopyReader(blobStore, announcer), "Generate product recommendations", "all"},
+		{"FraudDetectionService", zerocopy.NewZeroCopyReader(blobStore, announcer), "Detect fraudulent transactions", "orders"},
+		{"ReportingService", zerocopy.NewZeroCopyReader(blobStore, announcer), "Generate business reports", "all"},
+		{"PricingService", zerocopy.NewZeroCopyReader(blobStore, announcer), "Calculate dynamic pricing", "products"},
+		{"NotificationService", zerocopy.NewZeroCopyReader(blobStore, announcer), "Send customer notifications", "customers"},
 	}
 
 	// 4. Measure memory usage before microservices start

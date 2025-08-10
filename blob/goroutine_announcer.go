@@ -7,7 +7,33 @@ import (
 	"time"
 )
 
-// GoroutineAnnouncer implements Announcer and AnnouncementWatcher using goroutines
+// goroutineSubscription implements the Subscription interface for GoroutineAnnouncer
+type goroutineSubscription struct {
+	ch       chan int64
+	announcer *GoroutineAnnouncer
+	closed   bool
+	mu       sync.Mutex
+}
+
+func (s *goroutineSubscription) Updates() <-chan int64 {
+	return s.ch
+}
+
+func (s *goroutineSubscription) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	if s.closed {
+		return
+	}
+	s.closed = true
+	
+	s.announcer.Unsubscribe(s.ch)
+	// Don't close the channel here as it might be closed elsewhere
+	// The announcer cleanup should handle channel closing if needed
+}
+
+// GoroutineAnnouncer implements Announcer, VersionCursor, and Subscribable using goroutines
 type GoroutineAnnouncer struct {
 	mu              sync.RWMutex
 	latestVersion   int64
@@ -139,8 +165,8 @@ func (ga *GoroutineAnnouncer) Announce(version int64) error {
     }
 }
 
-// GetLatestVersion implements AnnouncementWatcher interface
-func (ga *GoroutineAnnouncer) GetLatestVersion() int64 {
+// Latest implements VersionCursor interface
+func (ga *GoroutineAnnouncer) Latest() int64 {
 	ga.mu.RLock()
 	defer ga.mu.RUnlock()
 	
@@ -148,6 +174,11 @@ func (ga *GoroutineAnnouncer) GetLatestVersion() int64 {
 		return ga.pinnedVersion
 	}
 	return ga.latestVersion
+}
+
+// GetLatestVersion is deprecated, use Latest() instead
+func (ga *GoroutineAnnouncer) GetLatestVersion() int64 {
+	return ga.Latest()
 }
 
 // Pin implements AnnouncementWatcher interface
@@ -181,15 +212,37 @@ func (ga *GoroutineAnnouncer) IsPinned() bool {
 	return ga.isPinned
 }
 
-// GetPinnedVersion implements AnnouncementWatcher interface
-func (ga *GoroutineAnnouncer) GetPinnedVersion() int64 {
+// Pinned implements VersionCursor interface
+func (ga *GoroutineAnnouncer) Pinned() (version int64, ok bool) {
 	ga.mu.RLock()
 	defer ga.mu.RUnlock()
-	return ga.pinnedVersion
+	return ga.pinnedVersion, ga.isPinned
 }
 
-// Subscribe adds a channel to receive version notifications
-func (ga *GoroutineAnnouncer) Subscribe(ch chan int64) {
+// GetPinnedVersion is deprecated, use Pinned() instead
+func (ga *GoroutineAnnouncer) GetPinnedVersion() int64 {
+	version, _ := ga.Pinned()
+	return version
+}
+
+// Subscribe implements Subscribable interface
+func (ga *GoroutineAnnouncer) Subscribe(bufferSize int) (Subscription, error) {
+	ch := make(chan int64, bufferSize)
+	
+	ga.mu.Lock()
+	defer ga.mu.Unlock()
+	ga.subscribers = append(ga.subscribers, ch)
+	
+	sub := &goroutineSubscription{
+		ch:        ch,
+		announcer: ga,
+	}
+	
+	return sub, nil
+}
+
+// SubscribeChannel adds a channel to receive version notifications (deprecated)
+func (ga *GoroutineAnnouncer) SubscribeChannel(ch chan int64) {
 	ga.mu.Lock()
 	defer ga.mu.Unlock()
 	ga.subscribers = append(ga.subscribers, ch)
@@ -277,7 +330,7 @@ func (ga *GoroutineAnnouncer) WaitForVersion(targetVersion int64, timeout time.D
 	
 	// Subscribe to announcements
 	ch := make(chan int64, 10)
-	ga.Subscribe(ch)
+	ga.SubscribeChannel(ch)
 	defer ga.Unsubscribe(ch)
 	
 	timer := time.NewTimer(timeout)

@@ -31,7 +31,7 @@ func TestCLIProducerConsumerWorkflow(t *testing.T) {
 	// Create consumer with CLI configuration
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(announcer),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	ctx := context.Background()

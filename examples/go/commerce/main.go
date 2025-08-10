@@ -52,9 +52,8 @@ func main() {
 
 	// Setup blob storage and announcer
 	blobStore := blob.NewInMemoryBlobStore()
-	announcement := blob.NewInMemoryAnnouncement()
-	announcer := blob.Announcer(announcement)
-	watcher := blob.AnnouncementWatcher(announcement)
+	announcer := blob.NewGoroutineAnnouncer()
+	defer announcer.Close()
 
 	// Phase 1: Primary producer handles customer data
 	slog.Info("\n--- Phase 1: Primary Producer (Customer Management) ---")
@@ -88,7 +87,7 @@ func main() {
 	slog.Info("\n--- Phase 3: Customer Service Consumer (Type Filtering) ---")
 	customerConsumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(watcher),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	// This consumer only cares about customer data
@@ -104,7 +103,7 @@ func main() {
 	slog.Info("\n--- Phase 4: Analytics Consumer (Full Data) ---")
 	analyticsConsumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(watcher),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	// This consumer needs both data types for analytics
@@ -119,7 +118,7 @@ func main() {
 
 	// Phase 5: Multi-producer coordination demonstration
 	slog.Info("\n--- Phase 5: Multi-Producer Coordination ---")
-	demonstrateMultiProducerScenario(ctx, blobStore, announcer, watcher)
+	demonstrateMultiProducerScenario(ctx, blobStore, announcer)
 
 	slog.Info("\n=== Commerce Platform Demo Completed Successfully ===")
 	slog.Info("Key achievements:")
@@ -350,7 +349,7 @@ func demonstrateAnalyticsOperations() {
 	slog.Info("✅ Analytics operations: customer-order joins, revenue analysis work perfectly")
 }
 
-func demonstrateMultiProducerScenario(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, watcher blob.AnnouncementWatcher) {
+func demonstrateMultiProducerScenario(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer) {
 	slog.Info("Multi-producer coordination scenario:")
 	
 	// Simulate a real-world scenario where both producers need to update data
@@ -404,7 +403,7 @@ func demonstrateMultiProducerScenario(ctx context.Context, blobStore blob.BlobSt
 	// Consumer sees coordinated data
 	consumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(watcher),
+		consumer.WithAnnouncer(announcer),
 	)
 	
 	maxVersion := max(uint64(customerVersion), uint64(orderVersion))

@@ -57,9 +57,8 @@ func main() {
 
 	// Setup blob storage with S3-like configuration
 	blobStore := blob.NewInMemoryBlobStore() // In production: use S3
-	announcement := blob.NewInMemoryAnnouncement()
-	announcer := blob.Announcer(announcement)
-	watcher := blob.AnnouncementWatcher(announcement)
+	announcer := blob.NewGoroutineAnnouncer()
+	defer announcer.Close()
 
 	// Phase 1: Device registration
 	slog.Info("\n--- Phase 1: Device Registration ---")
@@ -93,7 +92,7 @@ func main() {
 	slog.Info("\n--- Phase 3: Real-Time Monitoring Consumer ---")
 	monitoringConsumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(watcher),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	// Consumer with memory-efficient settings
@@ -124,7 +123,7 @@ func main() {
 	slog.Info("\n--- Phase 5: Time-Series Analytics ---")
 	analyticsConsumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(watcher),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	finalVersion := max(maxVersion, alertVersion)
@@ -137,7 +136,7 @@ func main() {
 
 	// Phase 6: Memory management simulation
 	slog.Info("\n--- Phase 6: Memory Management Simulation ---")
-	demonstrateMemoryManagement(ctx, blobStore, announcer, watcher)
+	demonstrateMemoryManagement(ctx, blobStore, announcer)
 
 	slog.Info("\n=== IoT Platform Demo Completed Successfully ===")
 	slog.Info("Key achievements:")
@@ -485,7 +484,7 @@ func demonstrateTimeSeriesAnalytics() {
 	slog.Info("✅ Time-series analytics: trend analysis and quality monitoring operational")
 }
 
-func demonstrateMemoryManagement(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, watcher blob.AnnouncementWatcher) {
+func demonstrateMemoryManagement(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer) {
 	slog.Info("Memory management simulation:")
 	
 	// Simulate high-frequency data ingestion (hot data)
@@ -512,7 +511,7 @@ func demonstrateMemoryManagement(ctx context.Context, blobStore blob.BlobStore, 
 	// Create memory-optimized consumer
 	memoryConsumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(watcher),
+		consumer.WithAnnouncer(announcer),
 	)
 	
 	// Load hot data (simulating memory pinning)

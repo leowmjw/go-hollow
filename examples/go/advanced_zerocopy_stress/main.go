@@ -209,7 +209,7 @@ func runZeroCopyConsumer(ctx context.Context, blobStore blob.BlobStore, announce
 				consumerID, roundsCompleted, maxRounds)
 			return
 		case <-ticker.C:
-			latestVersion := announcer.GetLatestVersion()
+			latestVersion := announcer.(*blob.GoroutineAnnouncer).Latest()
 			if int64(lastVersion) >= latestVersion {
 				continue
 			}
@@ -251,7 +251,7 @@ func runFallbackConsumer(ctx context.Context, blobStore blob.BlobStore, announce
 				consumerID, roundsCompleted, maxRounds)
 			return
 		case <-ticker.C:
-			latestVersion := announcer.GetLatestVersion()
+			latestVersion := announcer.(*blob.GoroutineAnnouncer).Latest()
 			if int64(lastVersion) >= latestVersion {
 				continue
 			}
@@ -299,7 +299,7 @@ func runAdaptiveConsumer(ctx context.Context, blobStore blob.BlobStore, announce
 				consumerID, roundsCompleted, maxRounds)
 			return
 		case <-ticker.C:
-			latestVersion := announcer.GetLatestVersion()
+			latestVersion := announcer.(*blob.GoroutineAnnouncer).Latest()
 			if int64(lastVersion) >= latestVersion {
 				continue
 			}
@@ -404,7 +404,7 @@ func printStressStats(stats *GlobalStats, announcer blob.Announcer, blobStore bl
 	activeWriters := atomic.LoadInt32(&stats.ConcurrentWriters)
 	activeConsumers := atomic.LoadInt32(&stats.ConcurrentConsumers)
 
-	latestVersion := announcer.GetLatestVersion()
+	latestVersion := announcer.(*blob.GoroutineAnnouncer).Latest()
 
 	fmt.Printf("📊 Production: %d versions, %d records, max version: %d, latest: %d\n",
 		versionsProduced, recordsWritten, maxVersion, latestVersion)
@@ -438,7 +438,7 @@ func printFinalStressReport(stats *GlobalStats, announcer blob.Announcer, blobSt
 	zeroCopyReads := atomic.LoadInt64(&stats.TotalZeroCopyReads)
 	fallbackReads := atomic.LoadInt64(&stats.TotalFallbackReads)
 	maxVersion := atomic.LoadUint64(&stats.MaxVersionReached)
-	latestVersion := announcer.GetLatestVersion()
+	latestVersion := announcer.(*blob.GoroutineAnnouncer).Latest()
 
 	fmt.Printf("Total Performance:\n")
 	fmt.Printf("   Versions produced: %d\n", versionsProduced)

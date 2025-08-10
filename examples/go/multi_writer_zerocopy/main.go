@@ -222,7 +222,12 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 			return
 		case <-ticker.C:
 			// Try to get latest version from announcer directly
-			latestVersion := announcer.GetLatestVersion()
+			// Cast to GoroutineAnnouncer to access Latest() method
+			goroutineAnnouncer, ok := announcer.(*blob.GoroutineAnnouncer)
+			if !ok {
+				continue
+			}
+			latestVersion := goroutineAnnouncer.Latest()
 			if latestVersion <= 0 {
 				// No versions available yet
 				continue

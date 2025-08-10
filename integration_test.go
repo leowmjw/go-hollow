@@ -35,7 +35,7 @@ func TestGoroutineAnnouncer(t *testing.T) {
 	
 	// Test subscription
 	ch := make(chan int64, 10)
-	announcer.Subscribe(ch)
+	announcer.SubscribeChannel(ch)
 	
 	// Announce a new version
 	err = announcer.Announce(2)
@@ -161,7 +161,7 @@ func TestEndToEndIntegration(t *testing.T) {
 	
 	// Subscribe to announcements for deterministic testing
 	announcementCh := make(chan int64, 10)
-	announcer.Subscribe(announcementCh)
+	announcer.SubscribeChannel(announcementCh)
 	defer func() {
 		announcer.Unsubscribe(announcementCh)
 		close(announcementCh)

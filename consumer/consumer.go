@@ -12,7 +12,7 @@ import (
 type Consumer struct {
 	readEngine     *internal.ReadStateEngine
 	retriever      blob.BlobRetriever
-	watcher        blob.AnnouncementWatcher
+	cursor         blob.VersionCursor
 	typeFilter     *internal.TypeFilter
 	memoryMode     internal.MemoryMode
 	autoRefresh    bool
@@ -28,17 +28,31 @@ func WithBlobRetriever(retriever blob.BlobRetriever) ConsumerOption {
 	}
 }
 
-func WithAnnouncementWatcher(watcher blob.AnnouncementWatcher) ConsumerOption {
+func WithVersionCursor(cursor blob.VersionCursor) ConsumerOption {
 	return func(c *Consumer) {
-		c.watcher = watcher
+		c.cursor = cursor
 		c.autoRefresh = true
 	}
 }
 
 func WithAnnouncer(announcer blob.Announcer) ConsumerOption {
 	return func(c *Consumer) {
-		c.watcher = announcer // Announcer now implements AnnouncementWatcher
-		c.autoRefresh = true
+		// Type-assert that announcer also implements VersionCursor
+		if cursor, ok := announcer.(blob.VersionCursor); ok {
+			c.cursor = cursor
+			c.autoRefresh = true
+		}
+	}
+}
+
+// Deprecated: Use WithVersionCursor or WithAnnouncer instead
+func WithAnnouncementWatcher(watcher interface{}) ConsumerOption {
+	return func(c *Consumer) {
+		// Try to convert to VersionCursor for backward compatibility
+		if cursor, ok := watcher.(blob.VersionCursor); ok {
+			c.cursor = cursor
+			c.autoRefresh = true
+		}
 	}
 }
 
@@ -71,8 +85,8 @@ func NewConsumer(opts ...ConsumerOption) *Consumer {
 		panic("Type filtering is incompatible with shared memory mode")
 	}
 
-	// Start watching for announcements if watcher is provided
-	if c.autoRefresh && c.watcher != nil {
+	// Start watching for announcements if cursor is provided
+	if c.autoRefresh && c.cursor != nil {
 		go c.autoRefreshLoop()
 	}
 
@@ -81,12 +95,15 @@ func NewConsumer(opts ...ConsumerOption) *Consumer {
 
 func (c *Consumer) autoRefreshLoop() {
 	// Push-based updates - no polling, no busy wait
-	if announcer, ok := c.watcher.(blob.Announcer); ok {
-		updates := make(chan int64, 1)
-		announcer.Subscribe(updates)
-		defer announcer.Unsubscribe(updates)
+	// Check if cursor also supports subscriptions 
+	if subscribable, ok := c.cursor.(blob.Subscribable); ok {
+		sub, err := subscribable.Subscribe(10) // Buffer size 10
+		if err != nil {
+			return
+		}
+		defer sub.Close()
 		
-		for version := range updates {
+		for version := range sub.Updates() {
 			currentVersion := c.readEngine.GetCurrentVersion()
 			if version > currentVersion {
 				// Auto-refresh to new version (idempotent call)
@@ -98,8 +115,8 @@ func (c *Consumer) autoRefreshLoop() {
 
 // TriggerRefresh refreshes to the latest available version
 func (c *Consumer) TriggerRefresh(ctx context.Context) error {
-	if c.watcher != nil {
-		latestVersion := c.watcher.GetLatestVersion()
+	if c.cursor != nil {
+		latestVersion := c.cursor.Latest()
 		// Fallback: If watcher hasn't announced yet, use retriever's latest snapshot
 		if latestVersion == 0 && c.retriever != nil {
 			versions := c.retriever.ListVersions()
