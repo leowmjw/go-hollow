@@ -15,7 +15,7 @@ import (
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
 	common "github.com/leowmjw/go-hollow/generated/go/common"
-	movie "github.com/leowmjw/go-hollow/generated/go/movie/schemas"
+	movie "github.com/leowmjw/go-hollow/generated/go/movie"
 )
 
 // Define Go structs for our data that can be used with indexes

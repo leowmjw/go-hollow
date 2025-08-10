@@ -72,6 +72,10 @@ func runMultiWriterZeroCopyDemo(ctx context.Context, blobStore blob.BlobStore, a
 	consumerStats := make(map[string]*ConsumerStats)
 	var statsMutex sync.RWMutex
 	
+	// Create cancelable context for coordinated shutdown
+	demoCtx, demoCancel := context.WithCancel(ctx)
+	defer demoCancel()
+	
 	// Announcer now directly implements AnnouncementWatcher - no adapter needed!
 
 	// Start multiple writers
@@ -83,7 +87,7 @@ func runMultiWriterZeroCopyDemo(ctx context.Context, blobStore blob.BlobStore, a
 		wg.Add(1)
 		go func(id string) {
 			defer wg.Done()
-			runWriter(ctx, blobStore, announcer, id, writerStats, &statsMutex)
+			runWriter(demoCtx, blobStore, announcer, id, writerStats, &statsMutex)
 		}(writerID)
 	}
 
@@ -96,7 +100,7 @@ func runMultiWriterZeroCopyDemo(ctx context.Context, blobStore blob.BlobStore, a
 		wg.Add(1)
 		go func(id string) {
 			defer wg.Done()
-			runConsumer(ctx, blobStore, announcer, id, consumerStats, &statsMutex)
+			runConsumer(demoCtx, blobStore, announcer, id, consumerStats, &statsMutex)
 		}(consumerID)
 	}
 
@@ -104,7 +108,7 @@ func runMultiWriterZeroCopyDemo(ctx context.Context, blobStore blob.BlobStore, a
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		reportStatistics(ctx, writerStats, consumerStats, &statsMutex)
+		reportStatistics(demoCtx, writerStats, consumerStats, &statsMutex, demoCancel)
 	}()
 
 	// Wait for all goroutines to complete
@@ -188,6 +192,10 @@ func runWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Ann
 			fmt.Printf("📝 %s produced version %d with %d records (round %d/%d)\n", writerID, version, len(records), roundsCompleted, maxRounds)
 		}
 	}
+	
+	// Exit after completing all rounds
+	fmt.Printf("📝 Writer %s completed all %d rounds, exiting\n", writerID, maxRounds)
+	return
 }
 
 func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, consumerID string, stats map[string]*ConsumerStats, mutex *sync.RWMutex) {
@@ -214,7 +222,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 	defer ticker.Stop()
 
 	lastVersion := uint64(0)
-	maxRounds := 12
+	maxRounds := 6
 	roundsCompleted := 0
 	
 	for roundsCompleted < maxRounds {
@@ -278,6 +286,38 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 			if err == nil {
 				lastVersion = uint64(latestVersion)
 
+				// VALIDATION: Check actual data content
+				var se *internal.ReadStateEngine
+				if zeroCopySuccess {
+					se = zeroCopyConsumer.GetStateEngine()
+				} else {
+					se = regularConsumer.GetStateEngine()
+				}
+				
+				// Inspect the actual data
+				if se != nil {
+					state := se.GetCurrentState()
+					if state != nil && !state.IsInvalidated() {
+						data := state.GetAllData()
+						actualRecordCount := 0
+						for typeName, records := range data {
+							actualRecordCount += len(records)
+							fmt.Printf("🔍 [VALIDATION] %s version %d: Type '%s' has %d records\n", 
+								consumerID, latestVersion, typeName, len(records))
+							// Show first few records
+							for i, record := range records {
+								if i < 2 { // Show first 2 records
+									fmt.Printf("🔍 [VALIDATION]   Record %d: %+v\n", i, record)
+								}
+							}
+						}
+						if actualRecordCount != recordCount {
+							fmt.Printf("⚠️  [WARNING] %s: TotalRecords()=%d but actual count=%d\n", 
+								consumerID, recordCount, actualRecordCount)
+						}
+					}
+				}
+
 				// Update statistics
 				mutex.Lock()
 				stats[consumerID].VersionsRead++
@@ -300,6 +340,10 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 			}
 		}
 	}
+	
+	// Exit after completing all rounds
+	fmt.Printf("👀 Consumer %s completed all %d rounds, exiting\n", consumerID, maxRounds)
+	return
 }
 
 func generateRecords(writerID string, startID int, count int) []DataRecord {
@@ -320,13 +364,13 @@ func generateRecords(writerID string, startID int, count int) []DataRecord {
 
 
 
-func reportStatistics(ctx context.Context, writerStats map[string]*WriterStats, consumerStats map[string]*ConsumerStats, mutex *sync.RWMutex) {
+func reportStatistics(ctx context.Context, writerStats map[string]*WriterStats, consumerStats map[string]*ConsumerStats, mutex *sync.RWMutex, cancel context.CancelFunc) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	// For checking completion
 	writerMaxRounds := 10
-	consumerMaxRounds := 12
+	consumerMaxRounds := 6
 
 	for {
 		select {
@@ -348,7 +392,7 @@ func reportStatistics(ctx context.Context, writerStats map[string]*WriterStats, 
 					stat.WriterID, stat.VersionsProduced, stat.RecordsWritten,
 					stat.LastWriteTime.Format("15:04:05"))
 					
-				// Writer is done if it produced writerMaxRounds versions (initial + regular rounds)
+				// Writer is done if it produced writerMaxRounds+1 versions (initial + regular rounds)
 				if stat.VersionsProduced < writerMaxRounds+1 {
 					allWritersDone = false
 				}
@@ -375,6 +419,8 @@ func reportStatistics(ctx context.Context, writerStats map[string]*WriterStats, 
 			if allWritersDone && allConsumersDone {
 				fmt.Println("\n🏁 All writers and consumers completed their rounds!")
 				printFinalStats(writerStats, consumerStats, mutex)
+				// Cancel the context to signal all goroutines to stop
+				cancel()
 				return
 			}
 		}

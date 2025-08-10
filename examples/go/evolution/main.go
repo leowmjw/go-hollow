@@ -10,7 +10,7 @@ import (
 	"github.com/leowmjw/go-hollow/consumer"
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
-	movie "github.com/leowmjw/go-hollow/generated/go/movie/schemas"
+	movie "github.com/leowmjw/go-hollow/generated/go/movie"
 )
 
 // MovieV1 represents the original schema (without runtime field)

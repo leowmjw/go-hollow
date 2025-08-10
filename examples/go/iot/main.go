@@ -11,7 +11,7 @@ import (
 	"github.com/leowmjw/go-hollow/consumer"
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
-	iot "github.com/leowmjw/go-hollow/generated/go/iot/schemas"
+	iot "github.com/leowmjw/go-hollow/generated/go/iot"
 )
 
 // Device represents our Go struct for IoT devices

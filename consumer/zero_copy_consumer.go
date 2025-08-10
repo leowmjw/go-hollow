@@ -31,7 +31,10 @@ func WithZeroCopySerializer(serializer internal.Serializer) ZeroCopyConsumerOpti
 func WithZeroCopySerializationMode(mode internal.SerializationMode) ZeroCopyConsumerOption {
 	return func(c *ZeroCopyConsumer) {
 		factory := internal.NewSerializerFactory(mode)
-		c.serializer = factory.CreateSerializer()
+		serializer := factory.CreateSerializer()
+		c.serializer = serializer
+		// Also configure the embedded Consumer with the same serializer
+		c.Consumer.serializer = serializer
 	}
 }
 

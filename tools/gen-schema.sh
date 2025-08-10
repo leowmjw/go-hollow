@@ -50,6 +50,7 @@ generate_go() {
     local schemas=(
         "common:common"
         "delta:delta"
+        "snapshot:snapshot"
         "movie_dataset:movie"
         "commerce_dataset:commerce"
         "iot_dataset:iot"
@@ -65,28 +66,12 @@ generate_go() {
         mkdir -p "$package_dir"
         capnp compile -I"$SCHEMAS_DIR" -ogo:"$package_dir" "$SCHEMAS_DIR/$schema_file.capnp"
         
-        # Create individual go.mod for each package
-        cat > "$package_dir/go.mod" << EOF
-module github.com/leowmjw/go-hollow/generated/go/$package_name
-
-go 1.24.5
-
-require (
-    capnproto.org/go/capnp/v3 v3.1.0-alpha.1
-)
-EOF
+        # Move generated files from schemas/ subdirectory to package root
+        if [ -d "$package_dir/schemas" ]; then
+            mv "$package_dir/schemas/"*.capnp.go "$package_dir/" 2>/dev/null || true
+            rmdir "$package_dir/schemas" 2>/dev/null || true
+        fi
     done
-    
-    # Create go.mod for generated code
-    cat > "$go_dir/go.mod" << EOF
-module github.com/leowmjw/go-hollow/generated/go
-
-go 1.24.5
-
-require (
-    capnproto.org/go/capnp/v3 v3.1.0-alpha.1
-)
-EOF
     
     log_info "Go bindings generated in $go_dir"
 }

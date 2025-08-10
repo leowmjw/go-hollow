@@ -10,7 +10,7 @@ import (
 	"github.com/leowmjw/go-hollow/consumer"
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
-	commerce "github.com/leowmjw/go-hollow/generated/go/commerce/schemas"
+	commerce "github.com/leowmjw/go-hollow/generated/go/commerce"
 )
 
 // Customer represents our Go struct for customers

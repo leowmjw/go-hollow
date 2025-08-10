@@ -128,6 +128,7 @@ func TestDeltaEfficiency(t *testing.T) {
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
 		consumer.WithAnnouncementWatcher(announcer),
+		consumer.WithSerializer(internal.NewCapnProtoSerializer()), // Match producer's serialization mode
 	)
 	
 	err := cons.TriggerRefresh(ctx)

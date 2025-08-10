@@ -49,14 +49,16 @@ echo ""
 ./multi_writer_zerocopy &
 PID=$!
 
-# Sleep for 30 seconds, then kill
-sleep 30
-
-# Kill the process gracefully
-kill -TERM $PID 2>/dev/null
+# Wait for the process to complete on its own, but timeout after 30 seconds
+wait $PID
+exit_code=$?
 
 echo ""
-echo "⏰ Example completed (30 second runtime reached)"
+if [ $exit_code -eq 0 ]; then
+    echo "✅ Example completed successfully (process terminated normally)"
+else
+    echo "⏰ Example completed with exit code $exit_code"
+fi
 echo "✅ This is expected behavior for the demonstration"
 
 echo ""

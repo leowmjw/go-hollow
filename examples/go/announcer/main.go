@@ -13,7 +13,7 @@ import (
 	"github.com/leowmjw/go-hollow/consumer"
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
-	movie "github.com/leowmjw/go-hollow/generated/go/movie/schemas"
+	movie "github.com/leowmjw/go-hollow/generated/go/movie"
 )
 
 // Simple data structures for testing
