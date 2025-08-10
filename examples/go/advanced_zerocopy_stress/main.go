@@ -38,57 +38,6 @@ type GlobalStats struct {
 	MaxVersionReached     uint64
 }
 
-// AnnouncementWatcherAdapter adapts a blob.Announcer to the blob.AnnouncementWatcher interface
-type AnnouncementWatcherAdapter struct {
-	announcer blob.Announcer
-	mu        sync.RWMutex
-	version   int64
-}
-
-// NewAnnouncementWatcherAdapter creates a new adapter for a blob.Announcer
-func NewAnnouncementWatcherAdapter(announcer blob.Announcer) *AnnouncementWatcherAdapter {
-	return &AnnouncementWatcherAdapter{
-		announcer: announcer,
-		version:   0,
-	}
-}
-
-// GetLatestVersion returns the latest version from the announcer
-func (a *AnnouncementWatcherAdapter) GetLatestVersion() int64 {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.version
-}
-
-// ReceiveAnnouncement receives a version announcement and updates the latest version
-func (a *AnnouncementWatcherAdapter) ReceiveAnnouncement(version int64) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if version > a.version {
-		a.version = version
-	}
-}
-
-// Pin implements the AnnouncementWatcher interface
-func (a *AnnouncementWatcherAdapter) Pin(version int64) {
-	// Not implemented for this adapter
-}
-
-// Unpin implements the AnnouncementWatcher interface
-func (a *AnnouncementWatcherAdapter) Unpin() {
-	// Not implemented for this adapter
-}
-
-// IsPinned implements the AnnouncementWatcher interface
-func (a *AnnouncementWatcherAdapter) IsPinned() bool {
-	return false
-}
-
-// GetPinnedVersion implements the AnnouncementWatcher interface
-func (a *AnnouncementWatcherAdapter) GetPinnedVersion() int64 {
-	return 0
-}
-
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -101,30 +50,16 @@ func main() {
 	blobStore := blob.NewInMemoryBlobStore()
 	channelAnnouncer := blob.NewGoroutineAnnouncer()
 
-	// Create the adapter from announcer to watcher
-	annWatcher := NewAnnouncementWatcherAdapter(channelAnnouncer)
-
-	// Setup producer listener to update the watcher adapter
-	producerCh := make(chan int64, 100)
-	channelAnnouncer.Subscribe(producerCh)
-	go func() {
-		for version := range producerCh {
-			annWatcher.ReceiveAnnouncement(version)
-		}
-	}()
-
-	// Create stats collector
-
 	// Global statistics
 	stats := &GlobalStats{}
 
 	// Run the stress test with proper context and timeout
 	ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	runAdvancedStressTest(ctx, blobStore, channelAnnouncer, annWatcher, stats)
+	runAdvancedStressTest(ctx, blobStore, channelAnnouncer, stats)
 }
 
-func runAdvancedStressTest(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, annWatcher *AnnouncementWatcherAdapter, stats *GlobalStats) {
+func runAdvancedStressTest(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, stats *GlobalStats) {
 	// Add overall timeout to prevent test from running forever
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
@@ -134,7 +69,7 @@ func runAdvancedStressTest(ctx context.Context, blobStore blob.BlobStore, announ
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		monitorGlobalStats(ctx, stats, annWatcher, blobStore)
+		monitorGlobalStats(ctx, stats, announcer, blobStore)
 	}()
 
 	// Start multiple high-frequency writers
@@ -145,7 +80,7 @@ func runAdvancedStressTest(ctx context.Context, blobStore blob.BlobStore, announ
 		go func(writerID int) {
 			defer wg.Done()
 			defer atomic.AddInt32(&stats.ConcurrentWriters, -1)
-			runHighFrequencyWriter(ctx, blobStore, announcer, annWatcher, writerID, stats)
+			runHighFrequencyWriter(ctx, blobStore, announcer, writerID, stats)
 		}(i)
 	}
 
@@ -160,11 +95,11 @@ func runAdvancedStressTest(ctx context.Context, blobStore blob.BlobStore, announ
 
 			// Different consumer strategies
 			if consumerID%3 == 0 {
-				runZeroCopyConsumer(ctx, blobStore, announcer, annWatcher, consumerID, stats)
+				runZeroCopyConsumer(ctx, blobStore, announcer, consumerID, stats)
 			} else if consumerID%3 == 1 {
-				runFallbackConsumer(ctx, blobStore, announcer, annWatcher, consumerID, stats)
+				runFallbackConsumer(ctx, blobStore, announcer, consumerID, stats)
 			} else {
-				runAdaptiveConsumer(ctx, blobStore, announcer, annWatcher, consumerID, stats)
+				runAdaptiveConsumer(ctx, blobStore, announcer, consumerID, stats)
 			}
 		}(i)
 	}
@@ -173,7 +108,7 @@ func runAdvancedStressTest(ctx context.Context, blobStore blob.BlobStore, announ
 	wg.Add(1)
 	go func() {
 		// Simulate version gap for testing
-		go createVersionGaps(ctx, announcer, annWatcher, stats)
+		go createVersionGaps(ctx, announcer, stats)
 	}()
 
 	// Wait for all goroutines to complete (with timeout)
@@ -182,7 +117,7 @@ func runAdvancedStressTest(ctx context.Context, blobStore blob.BlobStore, announ
 		wg.Wait()
 		close(c)
 	}()
-	
+
 	select {
 	case <-c:
 		fmt.Println("✅ All goroutines completed successfully!")
@@ -191,10 +126,10 @@ func runAdvancedStressTest(ctx context.Context, blobStore blob.BlobStore, announ
 	}
 
 	// Final report
-	printFinalStressReport(stats, annWatcher, blobStore)
+	printFinalStressReport(stats, announcer, blobStore)
 }
 
-func runHighFrequencyWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, annWatcher *AnnouncementWatcherAdapter, writerID int, stats *GlobalStats) {
+func runHighFrequencyWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, writerID int, stats *GlobalStats) {
 	fmt.Printf("📝 Starting high-frequency writer %d\n", writerID)
 
 	// Configure producer with snapshot for every version to ensure zero-copy works reliably
@@ -211,11 +146,11 @@ func runHighFrequencyWriter(ctx context.Context, blobStore blob.BlobStore, annou
 
 	batchCounter := 0
 	maxBatches := 15 // Limit to 15 batches of writes
-	
+
 	for batchCounter < maxBatches {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("📝 Writer %d stopping (completed %d/%d batches)\n", 
+			fmt.Printf("📝 Writer %d stopping (completed %d/%d batches)\n",
 				writerID, batchCounter, maxBatches)
 			return
 		case <-ticker.C:
@@ -246,17 +181,17 @@ func runHighFrequencyWriter(ctx context.Context, blobStore blob.BlobStore, annou
 				writerID, batchCounter, maxBatches, version, len(records))
 		}
 	}
-	
+
 	fmt.Printf("🚩 Writer %d finished all %d batches\n", writerID, maxBatches)
 }
 
-func runZeroCopyConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, annWatcher *AnnouncementWatcherAdapter, consumerID int, stats *GlobalStats) {
+func runZeroCopyConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, consumerID int, stats *GlobalStats) {
 	fmt.Printf("👀 Starting zero-copy consumer %d\n", consumerID)
 
-	// Use adapter that implements AnnouncementWatcher
+	// Use announcer directly
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(annWatcher),
+		consumer.WithAnnouncer(announcer),
 		consumer.WithMemoryMode(internal.SharedMemoryDirect),
 	)
 
@@ -266,15 +201,15 @@ func runZeroCopyConsumer(ctx context.Context, blobStore blob.BlobStore, announce
 	lastVersion := uint64(0)
 	maxRounds := 20 // Limit to 20 rounds of reads
 	roundsCompleted := 0
-	
+
 	for roundsCompleted < maxRounds {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("👀 Zero-copy consumer %d stopping (completed %d/%d rounds)\n", 
+			fmt.Printf("👀 Zero-copy consumer %d stopping (completed %d/%d rounds)\n",
 				consumerID, roundsCompleted, maxRounds)
 			return
 		case <-ticker.C:
-			latestVersion := annWatcher.GetLatestVersion()
+			latestVersion := announcer.GetLatestVersion()
 			if int64(lastVersion) >= latestVersion {
 				continue
 			}
@@ -285,21 +220,21 @@ func runZeroCopyConsumer(ctx context.Context, blobStore blob.BlobStore, announce
 				atomic.AddInt64(&stats.TotalZeroCopyReads, 1)
 				lastVersion = uint64(latestVersion)
 				roundsCompleted++
-				fmt.Printf("👀 Zero-copy consumer %d read version %d (round %d/%d)\n", 
+				fmt.Printf("👀 Zero-copy consumer %d read version %d (round %d/%d)\n",
 					consumerID, latestVersion, roundsCompleted, maxRounds)
 			}
 		}
 	}
-	
+
 	fmt.Printf("🚩 Zero-copy consumer %d finished all %d rounds\n", consumerID, maxRounds)
 }
 
-func runFallbackConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, annWatcher *AnnouncementWatcherAdapter, consumerID int, stats *GlobalStats) {
+func runFallbackConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, consumerID int, stats *GlobalStats) {
 	fmt.Printf("👀 Starting fallback consumer %d\n", consumerID)
 
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(annWatcher),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	ticker := time.NewTicker(400 * time.Millisecond)
@@ -308,15 +243,15 @@ func runFallbackConsumer(ctx context.Context, blobStore blob.BlobStore, announce
 	lastVersion := uint64(0)
 	maxRounds := 15 // Limit to 15 rounds of reads
 	roundsCompleted := 0
-	
+
 	for roundsCompleted < maxRounds {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("👀 Fallback consumer %d stopping (completed %d/%d rounds)\n", 
+			fmt.Printf("👀 Fallback consumer %d stopping (completed %d/%d rounds)\n",
 				consumerID, roundsCompleted, maxRounds)
 			return
 		case <-ticker.C:
-			latestVersion := annWatcher.GetLatestVersion()
+			latestVersion := announcer.GetLatestVersion()
 			if int64(lastVersion) >= latestVersion {
 				continue
 			}
@@ -327,27 +262,27 @@ func runFallbackConsumer(ctx context.Context, blobStore blob.BlobStore, announce
 				atomic.AddInt64(&stats.TotalFallbackReads, 1)
 				lastVersion = uint64(latestVersion)
 				roundsCompleted++
-				fmt.Printf("👀 Fallback consumer %d read version %d (round %d/%d)\n", 
+				fmt.Printf("👀 Fallback consumer %d read version %d (round %d/%d)\n",
 					consumerID, latestVersion, roundsCompleted, maxRounds)
 			}
 		}
 	}
-	
+
 	fmt.Printf("🚩 Fallback consumer %d finished all %d rounds\n", consumerID, maxRounds)
 }
 
-func runAdaptiveConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, annWatcher *AnnouncementWatcherAdapter, consumerID int, stats *GlobalStats) {
+func runAdaptiveConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer, consumerID int, stats *GlobalStats) {
 	fmt.Printf("👀 Starting adaptive consumer %d\n", consumerID)
 
-	// Use adapter that implements AnnouncementWatcher
+	// Use announcer directly
 	zcCons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(annWatcher),
+		consumer.WithAnnouncer(announcer),
 		consumer.WithMemoryMode(internal.SharedMemoryDirect),
 	)
 	cons := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
-		consumer.WithAnnouncementWatcher(annWatcher),
+		consumer.WithAnnouncer(announcer),
 	)
 
 	ticker := time.NewTicker(350 * time.Millisecond)
@@ -356,15 +291,15 @@ func runAdaptiveConsumer(ctx context.Context, blobStore blob.BlobStore, announce
 	lastVersion := uint64(0)
 	maxRounds := 18 // Limit to 18 rounds of reads
 	roundsCompleted := 0
-	
+
 	for roundsCompleted < maxRounds {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("👀 Adaptive consumer %d stopping (completed %d/%d rounds)\n", 
+			fmt.Printf("👀 Adaptive consumer %d stopping (completed %d/%d rounds)\n",
 				consumerID, roundsCompleted, maxRounds)
 			return
 		case <-ticker.C:
-			latestVersion := annWatcher.GetLatestVersion()
+			latestVersion := announcer.GetLatestVersion()
 			if int64(lastVersion) >= latestVersion {
 				continue
 			}
@@ -388,16 +323,16 @@ func runAdaptiveConsumer(ctx context.Context, blobStore blob.BlobStore, announce
 			if err == nil {
 				lastVersion = uint64(latestVersion)
 				roundsCompleted++
-				fmt.Printf("👀 Adaptive consumer %d read version %d (%s) (round %d/%d)\n", 
+				fmt.Printf("👀 Adaptive consumer %d read version %d (%s) (round %d/%d)\n",
 					consumerID, latestVersion, readType, roundsCompleted, maxRounds)
 			}
 		}
 	}
-	
+
 	fmt.Printf("🚩 Adaptive consumer %d finished all %d rounds\n", consumerID, maxRounds)
 }
 
-func createVersionGaps(ctx context.Context, announcer blob.Announcer, annWatcher *AnnouncementWatcherAdapter, stats *GlobalStats) {
+func createVersionGaps(ctx context.Context, announcer blob.Announcer, stats *GlobalStats) {
 	// Use context with timeout to prevent infinite execution
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -441,7 +376,7 @@ func generateStressRecords(writerID, batchID, count int) []StressTestRecord {
 	return records
 }
 
-func monitorGlobalStats(ctx context.Context, stats *GlobalStats, annWatcher *AnnouncementWatcherAdapter, blobStore blob.BlobStore) {
+func monitorGlobalStats(ctx context.Context, stats *GlobalStats, announcer blob.Announcer, blobStore blob.BlobStore) {
 	// Add timeout to prevent infinite monitoring
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -453,12 +388,12 @@ func monitorGlobalStats(ctx context.Context, stats *GlobalStats, annWatcher *Ann
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			printStressStats(stats, annWatcher, blobStore)
+			printStressStats(stats, announcer, blobStore)
 		}
 	}
 }
 
-func printStressStats(stats *GlobalStats, annWatcher *AnnouncementWatcherAdapter, blobStore blob.BlobStore) {
+func printStressStats(stats *GlobalStats, announcer blob.Announcer, blobStore blob.BlobStore) {
 	fmt.Println("\n🔥 === STRESS TEST STATISTICS ===")
 
 	versionsProduced := atomic.LoadInt64(&stats.TotalVersionsProduced)
@@ -469,7 +404,7 @@ func printStressStats(stats *GlobalStats, annWatcher *AnnouncementWatcherAdapter
 	activeWriters := atomic.LoadInt32(&stats.ConcurrentWriters)
 	activeConsumers := atomic.LoadInt32(&stats.ConcurrentConsumers)
 
-	latestVersion := annWatcher.GetLatestVersion()
+	latestVersion := announcer.GetLatestVersion()
 
 	fmt.Printf("📊 Production: %d versions, %d records, max version: %d, latest: %d\n",
 		versionsProduced, recordsWritten, maxVersion, latestVersion)
@@ -495,15 +430,15 @@ func printStressStats(stats *GlobalStats, annWatcher *AnnouncementWatcherAdapter
 	fmt.Println("===============================")
 }
 
-func printFinalStressReport(stats *GlobalStats, annWatcher *AnnouncementWatcherAdapter, blobStore blob.BlobStore) {
+func printFinalStressReport(stats *GlobalStats, announcer blob.Announcer, blobStore blob.BlobStore) {
 	fmt.Println("\n🏆 === FINAL STRESS TEST REPORT ===")
 
 	versionsProduced := atomic.LoadInt64(&stats.TotalVersionsProduced)
 	recordsWritten := atomic.LoadInt64(&stats.TotalRecordsWritten)
 	zeroCopyReads := atomic.LoadInt64(&stats.TotalZeroCopyReads)
 	fallbackReads := atomic.LoadInt64(&stats.TotalFallbackReads)
-	maxVersion := atomic.LoadUint64(&stats.MaxVersionReached) // Fix undefined reference
-	latestVersion := annWatcher.GetLatestVersion() // Fix undefined reference
+	maxVersion := atomic.LoadUint64(&stats.MaxVersionReached)
+	latestVersion := announcer.GetLatestVersion()
 
 	fmt.Printf("Total Performance:\n")
 	fmt.Printf("   Versions produced: %d\n", versionsProduced)
@@ -514,15 +449,15 @@ func printFinalStressReport(stats *GlobalStats, annWatcher *AnnouncementWatcherA
 	fmt.Printf("\n📖 Read Performance:\n")
 	// Calculate zero-copy success rate
 	zeroCopyRate := float64(0)
-	if zeroCopyReads + fallbackReads > 0 {
-		zeroCopyRate = float64(zeroCopyReads) / float64(zeroCopyReads + fallbackReads) * 100
+	if zeroCopyReads+fallbackReads > 0 {
+		zeroCopyRate = float64(zeroCopyReads) / float64(zeroCopyReads+fallbackReads) * 100
 	}
-	
-	fmt.Printf("Zero-copy success rate: %.2f%% (%d/%d)\n", zeroCopyRate, zeroCopyReads, zeroCopyReads + fallbackReads)
-	
+
+	fmt.Printf("Zero-copy success rate: %.2f%% (%d/%d)\n", zeroCopyRate, zeroCopyReads, zeroCopyReads+fallbackReads)
+
 	// Calculate ratio only if zeroCopyRate is not 100%
 	if zeroCopyRate < 100 {
-		fmt.Printf("Zero-copy vs fallback: %.1f:1 (%.2f%% zero-copy)\n", 
+		fmt.Printf("Zero-copy vs fallback: %.1f:1 (%.2f%% zero-copy)\n",
 			zeroCopyRate/(100-zeroCopyRate), zeroCopyRate)
 	} else {
 		fmt.Printf("Zero-copy vs fallback: all operations used zero-copy\n")
