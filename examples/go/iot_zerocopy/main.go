@@ -176,7 +176,6 @@ func demonstrateHighThroughputProcessing(ctx context.Context, blobStore blob.Blo
 
 func createStreamProcessingPipeline(blobStore blob.BlobStore, announcer blob.Announcer) *DataIngestionPipeline {
 
-
 	processors := []StreamProcessor{
 		{
 			name:        "AnomalyDetector",

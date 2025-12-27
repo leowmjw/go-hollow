@@ -27,14 +27,14 @@ type DataRecord struct {
 type ProductionProducer struct {
 	producerID string
 	producer   *producer.Producer
-	
+
 	// Batching state
 	pendingRecords []DataRecord
 	pendingMutex   sync.Mutex
 	batchSize      int
 	batchTimeout   time.Duration
 	lastFlush      time.Time
-	
+
 	// Statistics
 	stats struct {
 		sync.RWMutex
@@ -43,7 +43,7 @@ type ProductionProducer struct {
 		errors           uint64
 		startTime        time.Time
 	}
-	
+
 	// Resource management
 	flushTicker *time.Ticker
 	ctx         context.Context
@@ -52,41 +52,41 @@ type ProductionProducer struct {
 
 func NewProductionProducer(producerID string, blobStore blob.BlobStore, announcer blob.Announcer) *ProductionProducer {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	pp := &ProductionProducer{
 		producerID:     producerID,
 		batchSize:      100,
 		batchTimeout:   1 * time.Second,
 		lastFlush:      time.Now(),
 		pendingRecords: make([]DataRecord, 0, 100),
-		ctx:           ctx,
-		cancel:        cancel,
+		ctx:            ctx,
+		cancel:         cancel,
 	}
-	
+
 	pp.stats.startTime = time.Now()
-	
+
 	// Create producer
 	pp.producer = producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcer),
 		producer.WithNumStatesBetweenSnapshots(10),
 	)
-	
+
 	return pp
 }
 
 func (pp *ProductionProducer) Start() error {
 	log.Printf("🚀 Starting production producer: %s", pp.producerID)
-	
+
 	// Create initial snapshot
 	if err := pp.createInitialSnapshot(); err != nil {
 		return fmt.Errorf("failed to create initial snapshot: %w", err)
 	}
-	
+
 	// Start flush ticker
 	pp.flushTicker = time.NewTicker(pp.batchTimeout)
 	defer pp.flushTicker.Stop()
-	
+
 	for {
 		select {
 		case <-pp.ctx.Done():
@@ -104,21 +104,21 @@ func (pp *ProductionProducer) createInitialSnapshot() error {
 	// Note: In the real implementation, we would use internal.WriteState
 	// This is a simplified version for the example
 	log.Printf("📷 Producer %s would create initial snapshot here", pp.producerID)
-	
+
 	pp.stats.Lock()
 	pp.stats.versionsProduced++
 	pp.stats.recordsWritten++
 	pp.stats.Unlock()
-	
+
 	return nil
 }
 
 func (pp *ProductionProducer) AddRecord(record DataRecord) error {
 	pp.pendingMutex.Lock()
 	defer pp.pendingMutex.Unlock()
-	
+
 	pp.pendingRecords = append(pp.pendingRecords, record)
-	
+
 	// Auto-flush if batch is full
 	if len(pp.pendingRecords) >= pp.batchSize {
 		go func() {
@@ -128,33 +128,33 @@ func (pp *ProductionProducer) AddRecord(record DataRecord) error {
 			}
 		}()
 	}
-	
+
 	return nil
 }
 
 func (pp *ProductionProducer) flushPendingRecords() error {
 	pp.pendingMutex.Lock()
-	
+
 	if len(pp.pendingRecords) == 0 {
 		pp.pendingMutex.Unlock()
 		return nil
 	}
-	
+
 	recordsToFlush := make([]DataRecord, len(pp.pendingRecords))
 	copy(recordsToFlush, pp.pendingRecords)
 	pp.pendingRecords = pp.pendingRecords[:0]
-	
+
 	pp.pendingMutex.Unlock()
-	
+
 	// Simulate flushing records
 	// In the real implementation, this would call producer.RunCycle
 	log.Printf("✅ Producer %s flushed %d records", pp.producerID, len(recordsToFlush))
-	
+
 	pp.stats.Lock()
 	pp.stats.versionsProduced++
 	pp.stats.recordsWritten += uint64(len(recordsToFlush))
 	pp.stats.Unlock()
-	
+
 	pp.lastFlush = time.Now()
 	return nil
 }
@@ -167,15 +167,15 @@ func (pp *ProductionProducer) recordError() {
 
 func (pp *ProductionProducer) gracefulShutdown() error {
 	log.Printf("📝 Producer %s starting graceful shutdown", pp.producerID)
-	
+
 	// Flush any remaining records
 	if err := pp.flushPendingRecords(); err != nil {
 		log.Printf("⚠️ Producer %s shutdown flush error: %v", pp.producerID, err)
 	}
-	
+
 	pp.logFinalStats()
 	log.Printf("✅ Producer %s shut down gracefully", pp.producerID)
-	
+
 	return nil
 }
 
@@ -186,16 +186,16 @@ func (pp *ProductionProducer) Stop() {
 func (pp *ProductionProducer) GetStats() map[string]interface{} {
 	pp.stats.RLock()
 	defer pp.stats.RUnlock()
-	
+
 	uptime := time.Since(pp.stats.startTime)
-	
+
 	return map[string]interface{}{
 		"producer_id":        pp.producerID,
 		"versions_produced":  pp.stats.versionsProduced,
 		"records_written":    pp.stats.recordsWritten,
-		"errors":            pp.stats.errors,
-		"uptime_seconds":    uptime.Seconds(),
-		"pending_records":   len(pp.pendingRecords),
+		"errors":             pp.stats.errors,
+		"uptime_seconds":     uptime.Seconds(),
+		"pending_records":    len(pp.pendingRecords),
 		"records_per_second": float64(pp.stats.recordsWritten) / uptime.Seconds(),
 	}
 }
@@ -215,7 +215,7 @@ func NewProducerPool(poolSize int, blobStore blob.BlobStore, announcer blob.Anno
 	pool := &ProducerPool{
 		producers: make([]*ProductionProducer, poolSize),
 	}
-	
+
 	for i := 0; i < poolSize; i++ {
 		pool.producers[i] = NewProductionProducer(
 			fmt.Sprintf("Producer-%d", i+1),
@@ -223,13 +223,13 @@ func NewProducerPool(poolSize int, blobStore blob.BlobStore, announcer blob.Anno
 			announcer,
 		)
 	}
-	
+
 	return pool
 }
 
 func (pp *ProducerPool) Start() error {
 	var wg sync.WaitGroup
-	
+
 	for _, producer := range pp.producers {
 		wg.Add(1)
 		go func(p *ProductionProducer) {
@@ -239,7 +239,7 @@ func (pp *ProducerPool) Start() error {
 			}
 		}(producer)
 	}
-	
+
 	wg.Wait()
 	return nil
 }
@@ -258,7 +258,7 @@ func (pp *ProducerPool) AddRecord(record DataRecord) error {
 func generateTestData(source string, count int) []DataRecord {
 	records := make([]DataRecord, count)
 	now := time.Now().Unix()
-	
+
 	for i := 0; i < count; i++ {
 		records[i] = DataRecord{
 			ID:        fmt.Sprintf("%s-record-%d-%d", source, now, i),
@@ -267,7 +267,7 @@ func generateTestData(source string, count int) []DataRecord {
 			Source:    source,
 		}
 	}
-	
+
 	return records
 }
 
@@ -276,23 +276,23 @@ func main() {
 	blobStore := blob.NewInMemoryBlobStore()
 	announcer := blob.NewGoroutineAnnouncer()
 	defer announcer.Close()
-	
+
 	// Create producer pool
 	poolSize := 3
 	producerPool := NewProducerPool(poolSize, blobStore, announcer)
-	
+
 	// Start producer pool in background
 	go func() {
 		if err := producerPool.Start(); err != nil {
 			log.Printf("❌ Producer pool failed: %v", err)
 		}
 	}()
-	
+
 	// Simulate data production
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ticker.C:
@@ -307,19 +307,19 @@ func main() {
 			}
 		}
 	}()
-	
+
 	// Start statistics reporter
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ticker.C:
 				log.Printf("📊 Producer Pool Statistics:")
 				for _, producer := range producerPool.producers {
 					stats := producer.GetStats()
-					log.Printf("  %s: versions=%d, records=%d, errors=%d, rps=%.2f", 
+					log.Printf("  %s: versions=%d, records=%d, errors=%d, rps=%.2f",
 						producer.producerID,
 						stats["versions_produced"],
 						stats["records_written"],
@@ -329,11 +329,11 @@ func main() {
 			}
 		}
 	}()
-	
+
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	
+
 	log.Printf("🚀 Production producers started. Press Ctrl+C to stop.")
 	log.Printf("This example demonstrates production-ready patterns:")
 	log.Printf("  - Batching for efficient writes")
@@ -341,16 +341,16 @@ func main() {
 	log.Printf("  - Error handling and recovery")
 	log.Printf("  - Statistics and monitoring")
 	log.Printf("  - Graceful shutdown")
-	
+
 	// Wait for shutdown signal
 	<-sigChan
 	log.Printf("📝 Shutdown signal received, stopping producers...")
-	
+
 	// Stop producer pool
 	producerPool.Stop()
-	
+
 	// Give some time for graceful shutdown
 	time.Sleep(2 * time.Second)
-	
+
 	log.Printf("✅ All producers stopped gracefully")
 }

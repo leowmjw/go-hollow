@@ -2,15 +2,16 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
 	"capnproto.org/go/capnp/v3"
 	"github.com/leowmjw/go-hollow/blob"
 	"github.com/leowmjw/go-hollow/consumer"
+	movie "github.com/leowmjw/go-hollow/generated/go/movie"
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
-	movie "github.com/leowmjw/go-hollow/generated/go/movie"
 )
 
 // MovieV1 represents the original schema (without runtime field)
@@ -127,7 +128,7 @@ func main() {
 }
 
 func runProducerV1(ctx context.Context, prod *producer.Producer) (uint64, error) {
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		// Load movies without runtime data (v1 schema)
 		movies := loadMoviesV1()
 		for _, movieData := range movies {
@@ -162,11 +163,14 @@ func runProducerV1(ctx context.Context, prod *producer.Producer) (uint64, error)
 
 		slog.Info("Loaded v1 movies (no runtime data)", "count", len(movies))
 	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to run v1 producer cycle: %w", err)
+	}
 	return uint64(version), nil
 }
 
 func runProducerV2(ctx context.Context, prod *producer.Producer) (uint64, error) {
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		// Load movies with runtime data (v2 schema)
 		movies := loadMoviesV2()
 		for _, movieData := range movies {
@@ -200,6 +204,9 @@ func runProducerV2(ctx context.Context, prod *producer.Producer) (uint64, error)
 
 		slog.Info("Loaded v2 movies (with runtime data)", "count", len(movies))
 	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to run v2 producer cycle: %w", err)
+	}
 	return uint64(version), nil
 }
 
@@ -218,7 +225,7 @@ func loadMoviesV2() []MovieV2 {
 		{ID: 1, Title: "The Shawshank Redemption", Year: 1994, Genres: []string{"Drama"}, RuntimeMin: 142},
 		{ID: 2, Title: "The Godfather", Year: 1972, Genres: []string{"Crime", "Drama"}, RuntimeMin: 175},
 		{ID: 3, Title: "The Dark Knight", Year: 2008, Genres: []string{"Action", "Crime", "Drama"}, RuntimeMin: 152},
-		{ID: 4, Title: "Pulp Fiction", Year: 1994, Genres: []string{"Crime", "Drama"}, RuntimeMin: 154}, // New movie
+		{ID: 4, Title: "Pulp Fiction", Year: 1994, Genres: []string{"Crime", "Drama"}, RuntimeMin: 154},   // New movie
 		{ID: 5, Title: "Forrest Gump", Year: 1994, Genres: []string{"Drama", "Romance"}, RuntimeMin: 142}, // New movie
 	}
 }
@@ -236,8 +243,8 @@ func demonstrateIndexCompatibility() {
 
 	// V1 movies (no runtime)
 	moviesV1 := loadMoviesV1()
-	
-	// V2 movies (with runtime) 
+
+	// V2 movies (with runtime)
 	moviesV2 := loadMoviesV2()
 
 	// Create indexes that work with both versions

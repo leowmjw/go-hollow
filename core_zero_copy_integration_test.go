@@ -43,7 +43,7 @@ func TestEndToEndZeroCopyIntegration(t *testing.T) {
 
 	// Produce data using zero-copy serialization
 	t.Log("Producing data with zero-copy serialization...")
-	version1, err := prod.RunCycleE(ctx, func(ws *internal.WriteState) {
+	version1, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		// Add test data that will be serialized using Cap'n Proto
 		ws.Add(createTestData("movie_1", "The Matrix"))
 		ws.Add(createTestData("movie_2", "Inception"))
@@ -82,7 +82,7 @@ func TestEndToEndZeroCopyIntegration(t *testing.T) {
 	// Test zero-copy view access
 	if view, exists := zeroCopyConsumer.GetZeroCopyView(); exists {
 		t.Log("Testing zero-copy view access...")
-		
+
 		// Test direct buffer access
 		buffer := view.GetByteBuffer()
 		if len(buffer) == 0 {
@@ -138,7 +138,7 @@ func TestZeroCopyIndexIntegration(t *testing.T) {
 
 	// Produce data
 	t.Log("Producing data for index testing...")
-	version, err := prod.RunCycleE(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		for i := 0; i < 10; i++ {
 			ws.Add(createTestData(fmt.Sprintf("item_%d", i), fmt.Sprintf("Title %d", i)))
 		}
@@ -177,7 +177,7 @@ func TestZeroCopyIndexIntegration(t *testing.T) {
 
 	// Test index queries
 	adapter := indexManager.GetAdapter()
-	
+
 	// Test hash index query
 	t.Log("Testing zero-copy hash index query...")
 	matches, err := adapter.FindByHashIndex("movie_id_hash", "movie_id_0")
@@ -216,14 +216,14 @@ func TestZeroCopyPerformanceComparison(t *testing.T) {
 	// Test 1: Zero-copy mode
 	t.Log("Testing zero-copy mode performance...")
 	startTime := time.Now()
-	
+
 	zeroCopyProducer := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcer),
 		producer.WithSerializationMode(internal.ZeroCopyMode),
 	)
 
-	version1, err := zeroCopyProducer.RunCycleE(ctx, func(ws *internal.WriteState) {
+	version1, err := zeroCopyProducer.RunCycle(ctx, func(ws *internal.WriteState) {
 		for i := 0; i < recordCount; i++ {
 			ws.Add(createTestData(fmt.Sprintf("zc_item_%d", i), fmt.Sprintf("ZC Title %d", i)))
 		}
@@ -260,7 +260,7 @@ func TestZeroCopyPerformanceComparison(t *testing.T) {
 		producer.WithSerializationMode(internal.TraditionalMode),
 	)
 
-	version2, err := traditionalProducer.RunCycleE(ctx, func(ws *internal.WriteState) {
+	version2, err := traditionalProducer.RunCycle(ctx, func(ws *internal.WriteState) {
 		for i := 0; i < recordCount; i++ {
 			ws.Add(createTestData(fmt.Sprintf("tr_item_%d", i), fmt.Sprintf("TR Title %d", i)))
 		}
@@ -293,7 +293,7 @@ func TestZeroCopyPerformanceComparison(t *testing.T) {
 
 	// Memory usage comparison
 	t.Log("Testing memory usage comparison...")
-	
+
 	// Zero-copy memory usage
 	if view, exists := zeroCopyConsumer.GetZeroCopyView(); exists {
 		bufferSize := len(view.GetByteBuffer())
@@ -339,7 +339,7 @@ func TestHybridSerializationMode(t *testing.T) {
 
 	// Test small dataset (should use traditional mode)
 	t.Log("Testing hybrid mode with small dataset...")
-	version1, err := hybridProducer.RunCycleE(ctx, func(ws *internal.WriteState) {
+	version1, err := hybridProducer.RunCycle(ctx, func(ws *internal.WriteState) {
 		for i := 0; i < 10; i++ {
 			ws.Add(createTestData(fmt.Sprintf("small_%d", i), fmt.Sprintf("Small %d", i)))
 		}
@@ -356,7 +356,7 @@ func TestHybridSerializationMode(t *testing.T) {
 
 	// Test large dataset (should use zero-copy mode)
 	t.Log("Testing hybrid mode with large dataset...")
-	version2, err := hybridProducer.RunCycleE(ctx, func(ws *internal.WriteState) {
+	version2, err := hybridProducer.RunCycle(ctx, func(ws *internal.WriteState) {
 		for i := 0; i < 2000; i++ { // Large dataset
 			ws.Add(createTestData(fmt.Sprintf("large_%d", i), fmt.Sprintf("Large %d", i)))
 		}
@@ -418,7 +418,7 @@ func TestZeroCopyDataAccessor(t *testing.T) {
 	)
 
 	// Produce data
-	version, err := prod.RunCycleE(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		ws.Add(createTestData("test_1", "Test Movie"))
 	})
 	if err != nil {
@@ -439,7 +439,7 @@ func TestZeroCopyDataAccessor(t *testing.T) {
 
 	// Test data accessor
 	accessor := consumer.NewZeroCopyDataAccessor(view)
-	
+
 	// Test buffer access
 	buffer := accessor.GetRawBuffer()
 	if len(buffer) == 0 {
@@ -458,7 +458,7 @@ func TestZeroCopyDataAccessor(t *testing.T) {
 
 	// Test query engine
 	queryEngine := consumer.NewZeroCopyQueryEngine(view)
-	
+
 	// Test record count
 	count, err := queryEngine.CountRecords()
 	if err != nil {

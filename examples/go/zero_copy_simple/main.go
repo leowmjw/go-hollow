@@ -11,7 +11,7 @@ import (
 
 func main() {
 	fmt.Println("=== Zero-Copy Cap'n Proto Demo ===")
-	
+
 	// Demo 1: Create Cap'n Proto data
 	fmt.Println("\n1. Creating Cap'n Proto Dataset")
 	_, data := createMovieDataset()
@@ -20,20 +20,20 @@ func main() {
 	// Demo 2: Zero-Copy Deserialization
 	fmt.Println("\n2. Zero-Copy Deserialization")
 	start := time.Now()
-	
+
 	// Unmarshal without copying the underlying data
 	deserializedMsg, err := capnp.Unmarshal(data)
 	if err != nil {
 		fmt.Printf("✗ Failed to unmarshal: %v\n", err)
 		return
 	}
-	
+
 	dataset, err := movie.ReadRootMovieDataset(deserializedMsg)
 	if err != nil {
 		fmt.Printf("✗ Failed to read dataset: %v\n", err)
 		return
 	}
-	
+
 	deserializeTime := time.Since(start)
 	fmt.Printf("✓ Deserialized in %v (zero-copy)\n", deserializeTime)
 
@@ -44,9 +44,9 @@ func main() {
 		fmt.Printf("✗ Failed to get movies: %v\n", err)
 		return
 	}
-	
+
 	fmt.Printf("✓ Accessing %d movies without copying data:\n", movies.Len())
-	
+
 	start = time.Now()
 	for i := 0; i < movies.Len(); i++ {
 		movie := movies.At(i)
@@ -54,9 +54,9 @@ func main() {
 		year := movie.Year()
 		runtime := movie.RuntimeMin()
 		genres, _ := movie.Genres()
-		
+
 		fmt.Printf("  %d. %s (%d) - %d min", movie.Id(), title, year, runtime)
-		
+
 		if genres.Len() > 0 {
 			fmt.Print(" [")
 			for j := 0; j < genres.Len(); j++ {
@@ -101,11 +101,11 @@ func createMovieDataset() (*capnp.Message, []byte) {
 
 	// Create sample movies
 	movieData := []struct {
-		id     uint32
-		title  string
-		year   uint16
+		id      uint32
+		title   string
+		year    uint16
 		runtime uint16
-		genres []string
+		genres  []string
 	}{
 		{1, "The Matrix", 1999, 136, []string{"Action", "Sci-Fi"}},
 		{2, "Inception", 2010, 148, []string{"Action", "Thriller"}},
@@ -154,7 +154,7 @@ func createMovieDataset() (*capnp.Message, []byte) {
 
 func comparePerformance(movies movie.Movie_List) {
 	iterations := 10000
-	
+
 	// Zero-copy access benchmark
 	start := time.Now()
 	for i := 0; i < iterations; i++ {
@@ -176,7 +176,7 @@ func comparePerformance(movies movie.Movie_List) {
 		Year       uint16
 		RuntimeMin uint16
 	}
-	
+
 	copiedMovies := make([]CopiedMovie, movies.Len())
 	for i := 0; i < movies.Len(); i++ {
 		movie := movies.At(i)
@@ -204,7 +204,7 @@ func comparePerformance(movies movie.Movie_List) {
 	fmt.Printf("Performance (%d iterations × %d movies):\n", iterations, movies.Len())
 	fmt.Printf("  Zero-copy access: %v\n", zeroCopyTime)
 	fmt.Printf("  Copy-based access: %v\n", copyTime)
-	
+
 	if zeroCopyTime < copyTime {
 		speedup := float64(copyTime) / float64(zeroCopyTime)
 		fmt.Printf("  ✓ Zero-copy is %.2fx faster\n", speedup)
@@ -242,7 +242,7 @@ func demonstrateSchemaEvolution() {
 	// This demonstrates that Cap'n Proto supports schema evolution
 	// The current schema has runtimeMin field which was added in v2
 	// Older readers would gracefully handle missing fields
-	
+
 	fmt.Println("✓ Current schema includes runtimeMin field (added in v2)")
 	fmt.Println("✓ Zero-copy deserialization handles schema evolution gracefully")
 	fmt.Println("✓ Old readers can still read new data (forward compatibility)")

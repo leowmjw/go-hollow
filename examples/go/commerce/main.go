@@ -8,9 +8,9 @@ import (
 	"capnproto.org/go/capnp/v3"
 	"github.com/leowmjw/go-hollow/blob"
 	"github.com/leowmjw/go-hollow/consumer"
+	commerce "github.com/leowmjw/go-hollow/generated/go/commerce"
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
-	commerce "github.com/leowmjw/go-hollow/generated/go/commerce"
 )
 
 // Customer represents our Go struct for customers
@@ -130,7 +130,7 @@ func main() {
 }
 
 func runCustomerProducer(ctx context.Context, prod *producer.Producer) (uint64, error) {
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		customers := loadCustomerData()
 		for _, customer := range customers {
 			// Create Cap'n Proto message
@@ -155,11 +155,14 @@ func runCustomerProducer(ctx context.Context, prod *producer.Producer) (uint64, 
 
 		slog.Info("Loaded customer data", "count", len(customers))
 	})
+	if err != nil {
+		return 0, err
+	}
 	return uint64(version), nil
 }
 
 func runOrderProducer(ctx context.Context, prod *producer.Producer) (uint64, error) {
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		orders := loadOrderData()
 		for _, order := range orders {
 			// Create Cap'n Proto message
@@ -216,6 +219,9 @@ func runOrderProducer(ctx context.Context, prod *producer.Producer) (uint64, err
 
 		slog.Info("Loaded order data", "count", len(orders))
 	})
+	if err != nil {
+		return 0, err
+	}
 	return uint64(version), nil
 }
 
@@ -234,35 +240,35 @@ func loadOrderData() []Order {
 	// Real order data with items
 	return []Order{
 		{
-			ID: 2001, CustomerID: 1001, Amount: 2499, Currency: "USD", 
+			ID: 2001, CustomerID: 1001, Amount: 2499, Currency: "USD",
 			Status: "delivered", Timestamp: 1577836800,
 			Items: []OrderItem{
 				{ProductID: 5001, Quantity: 1, PricePerUnit: 2499, ProductName: "Laptop"},
 			},
 		},
 		{
-			ID: 2002, CustomerID: 1002, Amount: 899, Currency: "USD", 
+			ID: 2002, CustomerID: 1002, Amount: 899, Currency: "USD",
 			Status: "shipped", Timestamp: 1577923200,
 			Items: []OrderItem{
 				{ProductID: 5002, Quantity: 2, PricePerUnit: 449, ProductName: "Headphones"},
 			},
 		},
 		{
-			ID: 2003, CustomerID: 1003, Amount: 1599, Currency: "USD", 
+			ID: 2003, CustomerID: 1003, Amount: 1599, Currency: "USD",
 			Status: "pending", Timestamp: 1578009600,
 			Items: []OrderItem{
 				{ProductID: 5003, Quantity: 1, PricePerUnit: 1599, ProductName: "Monitor"},
 			},
 		},
 		{
-			ID: 2004, CustomerID: 1001, Amount: 299, Currency: "USD", 
+			ID: 2004, CustomerID: 1001, Amount: 299, Currency: "USD",
 			Status: "delivered", Timestamp: 1578096000,
 			Items: []OrderItem{
 				{ProductID: 5004, Quantity: 1, PricePerUnit: 299, ProductName: "Keyboard"},
 			},
 		},
 		{
-			ID: 2005, CustomerID: 1004, Amount: 1299, Currency: "USD", 
+			ID: 2005, CustomerID: 1004, Amount: 1299, Currency: "USD",
 			Status: "confirmed", Timestamp: 1578182400,
 			Items: []OrderItem{
 				{ProductID: 5005, Quantity: 1, PricePerUnit: 1299, ProductName: "Tablet"},
@@ -273,50 +279,50 @@ func loadOrderData() []Order {
 
 func demonstrateCustomerOperations() {
 	slog.Info("Customer Service Operations (customers only):")
-	
+
 	customers := loadCustomerData()
-	
+
 	// 1. Unique email index (for customer service)
 	customerByEmail := make(map[string]Customer)
 	for _, customer := range customers {
 		customerByEmail[customer.Email] = customer
 	}
-	
+
 	// 2. City-based index (for shipping analytics)
 	customersByCity := make(map[string][]Customer)
 	for _, customer := range customers {
 		customersByCity[customer.City] = append(customersByCity[customer.City], customer)
 	}
-	
+
 	// Demo queries
 	if customer, found := customerByEmail["alice@example.com"]; found {
 		slog.Info("Found customer by email", "email", "alice@example.com", "name", customer.Name, "city", customer.City)
 	}
-	
+
 	nycCustomers := customersByCity["New York"]
 	slog.Info("Customers in New York", "count", len(nycCustomers))
-	
+
 	slog.Info("✅ Customer operations: email lookup, city filtering work perfectly")
 }
 
 func demonstrateAnalyticsOperations() {
 	slog.Info("Analytics Operations (customers + orders):")
-	
+
 	customers := loadCustomerData()
 	orders := loadOrderData()
-	
+
 	// 1. Customer lookup for order analytics
 	customerByID := make(map[uint32]Customer)
 	for _, customer := range customers {
 		customerByID[customer.ID] = customer
 	}
-	
+
 	// 2. Orders by customer (primary key style)
 	ordersByCustomer := make(map[uint32][]Order)
 	for _, order := range orders {
 		ordersByCustomer[order.CustomerID] = append(ordersByCustomer[order.CustomerID], order)
 	}
-	
+
 	// 3. Revenue by city (analytics query)
 	revenueByCity := make(map[string]uint64)
 	for _, order := range orders {
@@ -324,17 +330,17 @@ func demonstrateAnalyticsOperations() {
 			revenueByCity[customer.City] += order.Amount
 		}
 	}
-	
+
 	// Demo analytics queries
 	aliceOrders := ordersByCustomer[1001]
 	slog.Info("Alice's orders", "count", len(aliceOrders))
-	
+
 	for city, revenue := range revenueByCity {
 		if revenue > 1000 { // Only show significant revenue
 			slog.Info("Revenue by city", "city", city, "revenue_cents", revenue, "revenue_dollars", revenue/100)
 		}
 	}
-	
+
 	// Calculate customer lifetime value
 	for customerID, customerOrders := range ordersByCustomer {
 		var totalValue uint64
@@ -345,44 +351,48 @@ func demonstrateAnalyticsOperations() {
 			slog.Info("High-value customer", "name", customer.Name, "lifetime_value", totalValue/100, "order_count", len(customerOrders))
 		}
 	}
-	
+
 	slog.Info("✅ Analytics operations: customer-order joins, revenue analysis work perfectly")
 }
 
 func demonstrateMultiProducerScenario(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer) {
 	slog.Info("Multi-producer coordination scenario:")
-	
+
 	// Simulate a real-world scenario where both producers need to update data
 	slog.Info("Scenario: New customer registers and immediately places an order")
-	
+
 	// Producer 1: Customer service adds new customer
 	customerProducer := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcer),
 	)
-	
-	customerVersion := customerProducer.RunCycle(ctx, func(ws *internal.WriteState) {
+
+	customerVersion, err := customerProducer.RunCycle(ctx, func(ws *internal.WriteState) {
 		// Add existing customers plus one new customer
 		customers := loadCustomerData()
 		customers = append(customers, Customer{
-			ID: 1006, Email: "frank@example.com", Name: "Frank Miller", 
+			ID: 1006, Email: "frank@example.com", Name: "Frank Miller",
 			City: "San Francisco", Age: 38, RegisteredAt: 1578268800,
 		})
-		
+
 		for _, customer := range customers {
 			ws.Add(customer)
 		}
-		
+
 		slog.Info("Added new customer Frank", "total_customers", len(customers))
 	})
-	
+	if err != nil {
+		slog.Error("Failed to run customer producer cycle", "error", err)
+		return
+	}
+
 	// Producer 2: Order service processes Frank's first order
 	orderProducer := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcer),
 	)
-	
-	orderVersion := orderProducer.RunCycle(ctx, func(ws *internal.WriteState) {
+
+	orderVersion, err := orderProducer.RunCycle(ctx, func(ws *internal.WriteState) {
 		// Add existing orders plus Frank's new order
 		orders := loadOrderData()
 		orders = append(orders, Order{
@@ -392,26 +402,30 @@ func demonstrateMultiProducerScenario(ctx context.Context, blobStore blob.BlobSt
 				{ProductID: 5007, Quantity: 1, PricePerUnit: 3999, ProductName: "Desktop PC"},
 			},
 		})
-		
+
 		for _, order := range orders {
 			ws.Add(order)
 		}
-		
+
 		slog.Info("Added Frank's order", "total_orders", len(orders))
 	})
-	
+	if err != nil {
+		slog.Error("Failed to run order producer cycle", "error", err)
+		return
+	}
+
 	// Consumer sees coordinated data
 	consumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
 		consumer.WithAnnouncer(announcer),
 	)
-	
+
 	maxVersion := max(uint64(customerVersion), uint64(orderVersion))
 	if err := consumer.TriggerRefreshTo(ctx, int64(maxVersion)); err != nil {
 		slog.Error("Consumer refresh failed", "error", err)
 		return
 	}
-	
+
 	slog.Info("✅ Multi-producer coordination successful")
 	slog.Info("  - Customer producer: version", "version", customerVersion)
 	slog.Info("  - Order producer: version", "version", orderVersion)

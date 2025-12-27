@@ -5,30 +5,30 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"fmt"
-	"sync"
 	"github.com/leowmjw/go-hollow/blob"
 	"github.com/leowmjw/go-hollow/internal"
+	"sync"
 )
 
 // Producer handles data production cycles
 type Producer struct {
-	writeEngine              *internal.WriteStateEngine
-	blobStore                blob.BlobStore
-	announcer                blob.Announcer
-	validators               []internal.Validator
-	singleProducerEnforcer   *internal.SingleProducerEnforcer
-	typeResharding           bool
-	targetMaxTypeShardSize   int
+	writeEngine               *internal.WriteStateEngine
+	blobStore                 blob.BlobStore
+	announcer                 blob.Announcer
+	validators                []internal.Validator
+	singleProducerEnforcer    *internal.SingleProducerEnforcer
+	typeResharding            bool
+	targetMaxTypeShardSize    int
 	numStatesBetweenSnapshots int
 	// Mutex protects concurrent access to version and hash state
-	mu                       sync.Mutex
-	currentVersion           int64
-	lastSnapshotVersion      int64
-	lastDataHash             uint64
+	mu                  sync.Mutex
+	currentVersion      int64
+	lastSnapshotVersion int64
+	lastDataHash        uint64
 	// Primary key configuration for identity management
-	primaryKeys              map[string]string
+	primaryKeys map[string]string
 	// Zero-copy serialization support
-	serializer               internal.Serializer
+	serializer internal.Serializer
 }
 
 // ProducerOption configures a Producer
@@ -111,83 +111,65 @@ func NewProducer(opts ...ProducerOption) *Producer {
 		numStatesBetweenSnapshots: 5,
 		primaryKeys:               make(map[string]string),
 	}
-	
+
 	for _, opt := range opts {
 		opt(p)
 	}
-	
+
 	// Pass the configured primary keys to the write engine
 	p.writeEngine.SetPrimaryKeys(p.primaryKeys)
-	
+
 	return p
 }
 
-// RunCycle executes a producer cycle and returns the new version
-// For backward compatibility, this method ignores errors.
-// Use RunCycleWithError for proper error handling.
-func (p *Producer) RunCycle(ctx context.Context, populate func(*internal.WriteState)) int64 {
-	version, _ := p.runCycleInternal(ctx, populate)
-	return version
-}
-
-// RunCycleE executes a producer cycle and returns version and error
+// RunCycle executes a producer cycle and returns version and error
 // This is the preferred method for new code that needs proper error handling.
-func (p *Producer) RunCycleE(ctx context.Context, populate func(*internal.WriteState)) (int64, error) {
-	return p.runCycleInternal(ctx, populate)
-}
-
-// RunCycleWithError executes a producer cycle and returns any validation errors
-func (p *Producer) RunCycleWithError(ctx context.Context, populate func(*internal.WriteState)) error {
-	_, err := p.runCycleInternal(ctx, populate)
-	return err
-}
-
-func (p *Producer) runCycleInternal(ctx context.Context, populate func(*internal.WriteState)) (int64, error) {
+func (p *Producer) RunCycle(ctx context.Context, populate func(*internal.WriteState)) (int64, error) {
 	// Lock to protect concurrent access to producer state
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	// Check single producer enforcement
 	if p.singleProducerEnforcer != nil && !p.singleProducerEnforcer.IsEnabled() {
 		// Non-primary producer returns current version
 		return p.currentVersion, nil
 	}
-	
+
 	// Prepare for cycle
 	p.writeEngine.PrepareForCycle()
 	writeState := p.writeEngine.GetWriteState()
-	
+
 	// Populate data
 	populate(writeState)
-	
+
 	// Check if cycle is empty
 	if writeState.IsEmpty() {
 		return 0, nil
 	}
-	
+
 	// Calculate data hash to detect identical cycles
 	dataHash := p.calculateDataHash(writeState.GetData())
-	
+
 	// Check if data is identical to previous cycle
 	if p.currentVersion > 0 && p.lastDataHash != 0 && dataHash == p.lastDataHash {
 		// Data is identical, return same version
 		return p.currentVersion, nil
 	}
-	
+
 	// Generate new version
 	newVersion := p.currentVersion + 1
-	
+
 	// Perform type resharding if enabled
 	if p.typeResharding {
 		p.performResharding(writeState)
 	}
-	
+
 	// Create read state for validation
 	readState := internal.NewReadState(newVersion)
-	
+
 	// Calculate deletes (records removed by omission) before validation
 	p.writeEngine.CalculateDeletes()
-	
+
 	// Run validation
 	for _, validator := range p.validators {
 		result := validator.Validate(readState)
@@ -197,18 +179,18 @@ func (p *Producer) runCycleInternal(ctx context.Context, populate func(*internal
 			return 0, fmt.Errorf("validation failed: %s", result.Message)
 		}
 	}
-	
+
 	// Serialize and store blob
 	err := p.storeBlob(ctx, newVersion, writeState)
 	if err != nil {
 		return 0, fmt.Errorf("failed to store blob: %w", err)
 	}
-	
+
 	// Update version and hash
 	p.currentVersion = newVersion
 	p.lastDataHash = dataHash
 	p.writeEngine.IncrementPopulatedCount()
-	
+
 	// Announce new version
 	if p.announcer != nil {
 		if err := p.announcer.Announce(newVersion); err != nil {
@@ -217,19 +199,19 @@ func (p *Producer) runCycleInternal(ctx context.Context, populate func(*internal
 			fmt.Printf("Warning: failed to announce version %d: %v\n", newVersion, err)
 		}
 	}
-	
+
 	return newVersion, nil
 }
 
 func (p *Producer) calculateDataHash(data map[string][]interface{}) uint64 {
 	h := md5.New()
-	
+
 	// Sort keys for consistent hashing
 	keys := make([]string, 0, len(data))
 	for k := range data {
 		keys = append(keys, k)
 	}
-	
+
 	// Simple sort
 	for i := 0; i < len(keys); i++ {
 		for j := i + 1; j < len(keys); j++ {
@@ -238,7 +220,7 @@ func (p *Producer) calculateDataHash(data map[string][]interface{}) uint64 {
 			}
 		}
 	}
-	
+
 	for _, key := range keys {
 		h.Write([]byte(key))
 		values := data[key]
@@ -254,14 +236,14 @@ func (p *Producer) calculateDataHash(data map[string][]interface{}) uint64 {
 			}
 		}
 	}
-	
+
 	sum := h.Sum(nil)
 	return binary.LittleEndian.Uint64(sum[:8])
 }
 
 func (p *Producer) performResharding(writeState *internal.WriteState) {
 	data := writeState.GetData()
-	
+
 	for typeName, values := range data {
 		if len(values) > p.targetMaxTypeShardSize {
 			// Calculate new shard count
@@ -279,17 +261,17 @@ func (p *Producer) performResharding(writeState *internal.WriteState) {
 
 func (p *Producer) storeBlob(ctx context.Context, version int64, writeState *internal.WriteState) error {
 	serializer := p.getSerializer()
-	
+
 	// Determine blob type
 	var blobType blob.BlobType
 	var fromVersion int64
 	var serializedData []byte
 	var err error
-	
+
 	if p.shouldCreateSnapshot(version) {
 		blobType = blob.SnapshotBlob
 		p.lastSnapshotVersion = version
-		
+
 		// Serialize full state for snapshot
 		serializedData, err = serializer.Serialize(ctx, writeState)
 		if err != nil {
@@ -298,10 +280,10 @@ func (p *Producer) storeBlob(ctx context.Context, version int64, writeState *int
 	} else {
 		blobType = blob.DeltaBlob
 		fromVersion = p.currentVersion
-		
+
 		// Get delta set and use efficient delta serialization
 		deltaSet := p.writeEngine.GetCurrentDelta()
-		
+
 		if deltaSet.IsEmpty() {
 			// No changes - create empty delta
 			serializedData = []byte{}
@@ -313,15 +295,15 @@ func (p *Producer) storeBlob(ctx context.Context, version int64, writeState *int
 			}
 		}
 	}
-	
+
 	// Calculate hash from raw data for consistency across serialization modes
 	data := writeState.GetData()
-	
+
 	// Create blob with serialized data
 	metadata := map[string]string{
 		"serialization_mode": fmt.Sprintf("%d", serializer.Mode()),
 	}
-	
+
 	// Add delta statistics for monitoring
 	if blobType == blob.DeltaBlob {
 		deltaSet := p.writeEngine.GetCurrentDelta()
@@ -329,7 +311,7 @@ func (p *Producer) storeBlob(ctx context.Context, version int64, writeState *int
 		metadata["delta_type_count"] = fmt.Sprintf("%d", len(deltaSet.Deltas))
 		metadata["is_delta_optimized"] = "true"
 	}
-	
+
 	blobData := &blob.Blob{
 		Type:        blobType,
 		Version:     version,
@@ -339,7 +321,7 @@ func (p *Producer) storeBlob(ctx context.Context, version int64, writeState *int
 		Checksum:    p.calculateDataHash(data),
 		Metadata:    metadata,
 	}
-	
+
 	// Store blob
 	return p.blobStore.Store(ctx, blobData)
 }
@@ -349,7 +331,7 @@ func (p *Producer) getSerializer() internal.Serializer {
 		return p.serializer
 	}
 	// Default to traditional serialization for backward compatibility
-	// Production code should explicitly use WithSerializationMode(ZeroCopyMode) 
+	// Production code should explicitly use WithSerializationMode(ZeroCopyMode)
 	return internal.NewTraditionalSerializer()
 }
 
@@ -357,7 +339,7 @@ func (p *Producer) shouldCreateSnapshot(version int64) bool {
 	if p.lastSnapshotVersion == 0 {
 		return true // First version is always a snapshot
 	}
-	
+
 	shouldSnapshot := version-p.lastSnapshotVersion >= int64(p.numStatesBetweenSnapshots)
 	return shouldSnapshot
 }
@@ -369,10 +351,10 @@ func (p *Producer) Restore(ctx context.Context, version int64, retriever blob.Bl
 	if snapshotBlob == nil {
 		return fmt.Errorf("snapshot not found for version %d", version)
 	}
-	
+
 	// Restore state (simplified)
 	p.currentVersion = version
-	
+
 	return nil
 }
 

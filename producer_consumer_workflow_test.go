@@ -39,23 +39,23 @@ func TestProducerConsumerWorkflow(t *testing.T) {
 	t.Run("Consumer version 0 shows nothing", func(t *testing.T) {
 		// Try to refresh to version 0 (latest, but nothing exists yet)
 		err := cons.TriggerRefresh(ctx)
-		
+
 		// Consumer should handle empty store gracefully (no error, stays at version 0)
 		if err != nil {
 			t.Logf("Consumer refresh from empty store returned error: %v", err)
 		}
-		
+
 		// Consumer version should be 0 (no data consumed)
 		if cons.GetCurrentVersion() != 0 {
 			t.Errorf("Expected consumer version 0, got %d", cons.GetCurrentVersion())
 		}
-		
+
 		// Verify no versions exist in store
 		versions := blobStore.ListVersions()
 		if len(versions) != 0 {
 			t.Errorf("Expected no versions in store, got %v", versions)
 		}
-		
+
 		// State engine should not have any types
 		stateEngine := cons.GetStateEngine()
 		if stateEngine.HasType("String") {
@@ -66,7 +66,7 @@ func TestProducerConsumerWorkflow(t *testing.T) {
 	// Test 2: Produce data
 	var version1 int64
 	t.Run("Produce data", func(t *testing.T) {
-		version1 = prod.RunCycle(ctx, func(ws *internal.WriteState) {
+		version1, _ = prod.RunCycle(ctx, func(ws *internal.WriteState) {
 			ws.Add("test_data_1")
 			ws.Add("test_data_2")
 			ws.Add("test_data_3")
@@ -156,14 +156,14 @@ func TestProducerConsumerMultipleVersions(t *testing.T) {
 	ctx := context.Background()
 
 	// Produce version 1
-	version1 := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version1, _ := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		ws.Add("data_v1_1")
 		ws.Add("data_v1_2")
 	})
 	t.Logf("Produced version 1: %d", version1)
 
 	// Produce version 2 with completely different data
-	version2 := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version2, _ := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		// Clear previous data and add new data
 		ws.Add("completely_different_data_1")
 		ws.Add("completely_different_data_2")

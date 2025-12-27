@@ -116,7 +116,7 @@ func runInteractiveMode(blobStore blob.BlobStore, announcer blob.Announcer, prod
 			// Read existing data first
 			existingData := readExistingData(zeroCopyConsumer, currentVersion)
 
-			newVersion, err := prod.RunCycleE(ctx, func(ws *internal.WriteState) {
+			newVersion, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 				switch operationType {
 				case "add":
 					// First re-add all existing data
@@ -134,10 +134,10 @@ func runInteractiveMode(blobStore blob.BlobStore, announcer blob.Announcer, prod
 					updatedCount := 0
 					for i := 0; i < len(existingData); i++ {
 						if i < count {
-									// For records we're updating, we modify them but preserve the original ID structure
+							// For records we're updating, we modify them but preserve the original ID structure
 							// The UPDATED_ prefix is just to make it visually obvious which records were updated
 							// PROOF: This is not a new record but an update to an existing one
-							fmt.Printf("PROOF OF UPDATE: Record %d: '%s' -> 'UPDATED_%s' (same identity)\n", 
+							fmt.Printf("PROOF OF UPDATE: Record %d: '%s' -> 'UPDATED_%s' (same identity)\n",
 								i, existingData[i], existingData[i])
 							ws.Add(fmt.Sprintf("UPDATED_%s", existingData[i]))
 							updatedCount++
@@ -173,7 +173,7 @@ func runInteractiveMode(blobStore blob.BlobStore, announcer blob.Announcer, prod
 							// Update this record but preserve the original ID structure
 							// The UPDATED_ prefix is just to make it visually obvious which records were updated
 							// PROOF: This is not a new record but an update to an existing one
-							fmt.Printf("PROOF OF MIXED UPDATE: Record at index %d: '%s' -> 'UPDATED_%s' (same identity)\n", 
+							fmt.Printf("PROOF OF MIXED UPDATE: Record at index %d: '%s' -> 'UPDATED_%s' (same identity)\n",
 								i, item, item)
 							ws.Add(fmt.Sprintf("UPDATED_%s", item))
 							updatedCount++

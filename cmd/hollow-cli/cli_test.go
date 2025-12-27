@@ -40,23 +40,23 @@ func TestCLIProducerConsumerWorkflow(t *testing.T) {
 	t.Run("CLI Consumer version 0 shows nothing", func(t *testing.T) {
 		// Try to refresh to version 0 (latest, but nothing exists yet)
 		err := cons.TriggerRefresh(ctx)
-		
+
 		// Consumer should handle empty store gracefully
 		if err != nil {
 			t.Logf("Consumer refresh from empty store returned error: %v", err)
 		}
-		
+
 		// Consumer version should be 0 (no data consumed)
 		if cons.GetCurrentVersion() != 0 {
 			t.Errorf("Expected consumer version 0, got %d", cons.GetCurrentVersion())
 		}
-		
+
 		// Verify no versions exist in store
 		versions := blobStore.ListVersions()
 		if len(versions) != 0 {
 			t.Errorf("Expected no versions in store, got %v", versions)
 		}
-		
+
 		// State engine should not have any types
 		stateEngine := cons.GetStateEngine()
 		if stateEngine.HasType("String") {
@@ -68,7 +68,7 @@ func TestCLIProducerConsumerWorkflow(t *testing.T) {
 	var version1 int64
 	t.Run("CLI Produce data", func(t *testing.T) {
 		// Simulate the CLI producer cycle with test data
-		version1 = prod.RunCycle(ctx, func(ws *internal.WriteState) {
+		version1, _ = prod.RunCycle(ctx, func(ws *internal.WriteState) {
 			// Add some test data like the CLI does
 			for i := 0; i < 10; i++ {
 				ws.Add("test_data_" + string(rune('0'+i)))
@@ -134,7 +134,7 @@ func TestCLIProducerConsumerWorkflow(t *testing.T) {
 	// Test 4: Test interactive mode scenario - produce another version
 	t.Run("CLI Interactive mode - produce version 2", func(t *testing.T) {
 		// Simulate interactive mode producing another version
-		version2 := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+		version2, _ := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 			// Add some new test data
 			for i := 0; i < 5; i++ {
 				ws.Add("new_data_v2_" + string(rune('0'+i)))
@@ -179,7 +179,7 @@ func TestCLIMemoryStorageIssue(t *testing.T) {
 			producer.WithNumStatesBetweenSnapshots(1),
 		)
 
-		version1 := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+		version1, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 			ws.Add("test_data")
 		})
 
@@ -211,7 +211,7 @@ func TestCLIMemoryStorageIssue(t *testing.T) {
 			consumer.WithBlobRetriever(sharedBlobStore),
 		)
 
-		version1 := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+		version1, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 			ws.Add("test_data")
 		})
 

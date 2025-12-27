@@ -15,9 +15,9 @@ import (
 
 func main() {
 	fmt.Println("=== Zero-Copy Integration Demo ===")
-	
+
 	ctx := context.Background()
-	
+
 	// Setup
 	blobStore := blob.NewInMemoryBlobStore()
 	announcer := blob.NewGoroutineAnnouncer()
@@ -25,7 +25,7 @@ func main() {
 
 	// Demo 1: Zero-Copy Writing
 	fmt.Println("\n1. Zero-Copy Writing Demo")
-	
+
 	// Create producer with zero-copy serialization
 	prod := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
@@ -33,7 +33,7 @@ func main() {
 		producer.WithSerializationMode(internal.ZeroCopyMode),
 		producer.WithNumStatesBetweenSnapshots(1), // Ensure snapshot for every version
 	)
-	
+
 	movies := []zerocopy.MovieData{
 		{ID: 1, Title: "The Matrix", Year: 1999, RuntimeMin: 136, Genres: []string{"Action", "Sci-Fi"}},
 		{ID: 2, Title: "Inception", Year: 2010, RuntimeMin: 148, Genres: []string{"Action", "Thriller"}},
@@ -42,18 +42,23 @@ func main() {
 		{ID: 5, Title: "Dune", Year: 2021, RuntimeMin: 155, Genres: []string{"Action", "Adventure"}},
 	}
 
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	var err error
+	var version int64
+	version, err = prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		for _, movie := range movies {
 			ws.Add(movie)
 		}
 	})
+	if err != nil {
+		log.Fatalf("RunCycle failed: %v", err)
+	}
 	fmt.Printf("✓ Written %d movies using zero-copy serialization (version: %d)\n", len(movies), version)
 
 	// Demo 2: Zero-Copy Reading
 	fmt.Println("\n2. Zero-Copy Reading Demo")
 	reader := zerocopy.NewZeroCopyReader(blobStore, announcer)
-	
-	err := reader.RefreshTo(ctx, int64(version))
+
+	err = reader.RefreshTo(ctx, int64(version))
 	if err != nil {
 		log.Fatalf("Failed to refresh reader: %v", err)
 	}
@@ -65,18 +70,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to get movies: %v", err)
 	}
-	
+
 	fmt.Printf("✓ Loaded %d movies using zero-copy access\n", moviesList.Len())
-	
+
 	// Access individual movies without copying data
 	for i := 0; i < moviesList.Len(); i++ {
 		movie := moviesList.At(i)
 		title, _ := movie.Title()
 		genres, _ := movie.Genres()
-		
-		fmt.Printf("  Movie %d: %s (%d) - %d min", 
+
+		fmt.Printf("  Movie %d: %s (%d) - %d min",
 			movie.Id(), title, movie.Year(), movie.RuntimeMin())
-		
+
 		if genres.Len() > 0 {
 			fmt.Print(" [")
 			for j := 0; j < genres.Len(); j++ {
@@ -98,7 +103,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to find movie: %v", err)
 	}
-	
+
 	if found {
 		title, _ := movie.Title()
 		fmt.Printf("✓ Found movie ID %d: %s (%d)\n", targetId, title, movie.Year())
@@ -113,7 +118,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to filter movies: %v", err)
 	}
-	
+
 	fmt.Printf("✓ Found %d movies from year %d:\n", len(moviesFromYear), targetYear)
 	for _, movie := range moviesFromYear {
 		title, _ := movie.Title()
@@ -123,7 +128,7 @@ func main() {
 	// Demo 6: Zero-Copy Iteration
 	fmt.Println("\n6. Zero-Copy Iteration Demo")
 	iterator := zerocopy.NewZeroCopyIterator(moviesList, 2)
-	
+
 	batchNum := 1
 	for iterator.HasNext() {
 		batch := iterator.Next()
@@ -138,7 +143,7 @@ func main() {
 	// Demo 7: Zero-Copy Aggregation
 	fmt.Println("\n7. Zero-Copy Aggregation Demo")
 	aggregator := zerocopy.NewZeroCopyAggregator()
-	
+
 	avgRuntimeByYear := aggregator.AverageRuntimeByYear(moviesList)
 	fmt.Println("Average runtime by year:")
 	for year, avgRuntime := range avgRuntimeByYear {
@@ -149,7 +154,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to count genres: %v", err)
 	}
-	
+
 	fmt.Println("Movie count by genre:")
 	for genre, count := range genreCounts {
 		fmt.Printf("  %s: %d movies\n", genre, count)
@@ -192,7 +197,7 @@ func demonstratePerformanceBenefits(reader *zerocopy.ZeroCopyReader) {
 		Year       uint16
 		RuntimeMin uint16
 	}
-	
+
 	// First, copy all data
 	copiedMovies := make([]CopiedMovie, moviesList.Len())
 	for i := 0; i < moviesList.Len(); i++ {
@@ -220,7 +225,7 @@ func demonstratePerformanceBenefits(reader *zerocopy.ZeroCopyReader) {
 	fmt.Printf("Performance comparison (%d iterations):\n", iterations)
 	fmt.Printf("  Zero-copy access: %v\n", zeroCopyDuration)
 	fmt.Printf("  Copy-based access: %v\n", copyDuration)
-	
+
 	if zeroCopyDuration < copyDuration {
 		speedup := float64(copyDuration) / float64(zeroCopyDuration)
 		fmt.Printf("  ✓ Zero-copy is %.2fx faster\n", speedup)

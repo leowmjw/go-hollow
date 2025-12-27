@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -158,11 +159,15 @@ func runHighFrequencyWriter(ctx context.Context, blobStore blob.BlobStore, annou
 			batchSize := 5 + rand.Intn(10) // 5-14 records per batch
 			records := generateStressRecords(writerID, batchCounter, batchSize)
 
-			version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+			version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 				for _, record := range records {
 					ws.Add(record)
 				}
 			})
+			if err != nil {
+				log.Printf("Writer %s: Failed to write stress batch: %v", writerID, err)
+				continue // Skip this batch and try again
+			}
 
 			// Update statistics
 			atomic.AddInt64(&stats.TotalVersionsProduced, 1)

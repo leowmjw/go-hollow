@@ -14,9 +14,9 @@ import (
 
 // Benchmark test data size configurations
 const (
-	SmallDataset  = 1000     // 1K records
-	MediumDataset = 100000   // 100K records  
-	LargeDataset  = 1000000  // 1M records
+	SmallDataset  = 1000    // 1K records
+	MediumDataset = 100000  // 100K records
+	LargeDataset  = 1000000 // 1M records
 )
 
 // BenchmarkProducerSnapshot measures producer performance for snapshot creation
@@ -54,7 +54,7 @@ func benchmarkProducerWithSize(b *testing.B, recordCount int) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		version, err := prod.RunCycleE(ctx, func(ws *internal.WriteState) {
+		version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 			for _, movieData := range movies {
 				ws.Add(movieData)
 			}
@@ -75,7 +75,7 @@ func benchmarkProducerWithSize(b *testing.B, recordCount int) {
 	b.ReportMetric(float64(recordCount*b.N)/1e6, "total_million_records")
 }
 
-// BenchmarkConsumerRefresh measures consumer refresh performance  
+// BenchmarkConsumerRefresh measures consumer refresh performance
 func BenchmarkConsumerRefresh(b *testing.B) {
 	ctx := context.Background()
 	blobStore := blob.NewInMemoryBlobStore()
@@ -89,7 +89,7 @@ func BenchmarkConsumerRefresh(b *testing.B) {
 	)
 
 	movies := generateMovieData(MediumDataset)
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, _ := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		for _, movieData := range movies {
 			ws.Add(movieData)
 		}
@@ -175,7 +175,7 @@ func BenchmarkDataAccess(b *testing.B) {
 	)
 
 	movies := generateMovieData(SmallDataset) // Smaller dataset for access patterns
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, _ := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		for _, movieData := range movies {
 			ws.Add(movieData)
 		}
@@ -222,7 +222,7 @@ func BenchmarkMemoryFootprint(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		version, err := prod.RunCycleE(ctx, func(ws *internal.WriteState) {
+		version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 			for _, movieData := range movieBatch {
 				ws.Add(movieData)
 			}
@@ -239,7 +239,7 @@ func BenchmarkMemoryFootprint(b *testing.B) {
 	// Report basic memory metrics
 	if b.N > 0 {
 		bytesPerOp := float64(testing.AllocsPerRun(1, func() {
-			version, _ := prod.RunCycleE(ctx, func(ws *internal.WriteState) {
+			version, _ := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 				for _, movieData := range movieBatch {
 					ws.Add(movieData)
 				}
@@ -254,7 +254,7 @@ func BenchmarkMemoryFootprint(b *testing.B) {
 func generateMovieData(count int) []TestMovieData {
 	movies := make([]TestMovieData, count)
 	genres := []string{"Action", "Drama", "Comedy", "Thriller", "Sci-Fi", "Romance"}
-	
+
 	for i := 0; i < count; i++ {
 		movies[i] = TestMovieData{
 			ID:         uint32(i + 1),
@@ -264,7 +264,7 @@ func generateMovieData(count int) []TestMovieData {
 			Genres:     []string{genres[i%len(genres)], genres[(i+1)%len(genres)]},
 		}
 	}
-	
+
 	return movies
 }
 

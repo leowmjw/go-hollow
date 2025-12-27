@@ -41,19 +41,19 @@ func main() {
 func demonstrateLargeDatasetProcessing(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer) {
 	// 1. Create a large movie dataset (simulating Netflix-scale catalog)
 	slog.Info("Creating large movie dataset...", "size", "50,000 movies")
-	
+
 	start := time.Now()
 	largeDataset := generateLargeMovieDataset(50000)
 	generationTime := time.Since(start)
-	
-	slog.Info("Dataset generated", 
+
+	slog.Info("Dataset generated",
 		"movies", len(largeDataset),
 		"generation_time", generationTime,
 		"avg_per_movie", generationTime/time.Duration(len(largeDataset)))
 
 	// 2. Write using zero-copy serialization
 	slog.Info("Writing dataset using zero-copy serialization...")
-	
+
 	// Create producer with zero-copy serialization
 	prod := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
@@ -61,15 +61,19 @@ func demonstrateLargeDatasetProcessing(ctx context.Context, blobStore blob.BlobS
 		producer.WithSerializationMode(internal.ZeroCopyMode),
 		producer.WithNumStatesBetweenSnapshots(1), // Ensure snapshot for every version
 	)
-	
+
 	start = time.Now()
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		for _, movieData := range largeDataset {
 			ws.Add(movieData)
 		}
 	})
+	if err != nil {
+		slog.Error("Failed to write dataset", "error", err)
+		return
+	}
 	writeTime := time.Since(start)
-	
+
 	slog.Info("Dataset written",
 		"version", version,
 		"write_time", writeTime,
@@ -77,8 +81,6 @@ func demonstrateLargeDatasetProcessing(ctx context.Context, blobStore blob.BlobS
 
 	// 3. Create multiple consumers (simulating different analytics services)
 	slog.Info("Creating multiple zero-copy consumers for different analytics...")
-	
-
 
 	consumers := []struct {
 		name     string
@@ -94,37 +96,37 @@ func demonstrateLargeDatasetProcessing(ctx context.Context, blobStore blob.BlobS
 
 	// 4. All consumers read the same data simultaneously (demonstrating memory efficiency)
 	slog.Info("All consumers reading the same dataset simultaneously...")
-	
+
 	var memStatsBefore runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&memStatsBefore)
-	
+
 	start = time.Now()
 	for i, consumer := range consumers {
 		slog.Info("Consumer starting", "name", consumer.name, "purpose", consumer.purpose)
-		
+
 		// Each consumer refreshes to the same version (zero-copy sharing)
 		err := consumer.consumer.RefreshTo(ctx, int64(version))
 		if err != nil {
 			slog.Error("Consumer refresh failed", "name", consumer.name, "error", err)
 			continue
 		}
-		
+
 		// Demonstrate zero-copy data access for each consumer
 		demonstrateConsumerAnalytics(consumer.name, consumer.consumer, i == 0) // Detailed output for first consumer only
 	}
-	
+
 	consumeTime := time.Since(start)
-	
+
 	var memStatsAfter runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&memStatsAfter)
-	
+
 	slog.Info("All consumers completed",
 		"total_time", consumeTime,
 		"consumers", len(consumers),
 		"avg_time_per_consumer", consumeTime/time.Duration(len(consumers)))
-	
+
 	// 5. Memory efficiency analysis
 	memoryUsed := memStatsAfter.Alloc - memStatsBefore.Alloc
 	slog.Info("Memory efficiency analysis",
@@ -139,14 +141,14 @@ func demonstrateLargeDatasetProcessing(ctx context.Context, blobStore blob.BlobS
 
 func demonstrateConsumerAnalytics(consumerName string, reader *zerocopy.ZeroCopyReader, detailed bool) {
 	start := time.Now()
-	
+
 	// Get zero-copy access to movies
 	movies, err := reader.GetMovies()
 	if err != nil {
 		slog.Error("Failed to get movies", "consumer", consumerName, "error", err)
 		return
 	}
-	
+
 	// Simulate different analytics workloads
 	switch consumerName {
 	case "RecommendationEngine":
@@ -158,7 +160,7 @@ func demonstrateConsumerAnalytics(consumerName string, reader *zerocopy.ZeroCopy
 				"recent_movies_found", len(scifiMovies),
 				"access_method", "zero-copy filtering")
 		}
-		
+
 	case "SearchIndexer":
 		// Build search index (iterate all movies)
 		iterator := zerocopy.NewZeroCopyIterator(movies, 1000)
@@ -174,13 +176,13 @@ func demonstrateConsumerAnalytics(consumerName string, reader *zerocopy.ZeroCopy
 				"batches_processed", batchCount,
 				"access_method", "zero-copy iteration")
 		}
-		
+
 	case "MetricsCalculator":
 		// Calculate statistics
 		aggregator := zerocopy.NewZeroCopyAggregator()
 		avgRuntime := aggregator.AverageRuntimeByYear(movies)
 		genreCounts, _ := aggregator.CountByGenre(movies)
-		
+
 		if detailed {
 			slog.Info("Metrics calculation",
 				"consumer", consumerName,
@@ -188,12 +190,12 @@ func demonstrateConsumerAnalytics(consumerName string, reader *zerocopy.ZeroCopy
 				"genres_counted", len(genreCounts),
 				"access_method", "zero-copy aggregation")
 		}
-		
+
 	case "GenreAnalyzer":
 		// Analyze genre trends
 		totalMovies := movies.Len()
 		genreMap := make(map[string]int)
-		
+
 		for i := 0; i < movies.Len(); i++ {
 			movie := movies.At(i)
 			genres, _ := movie.Genres()
@@ -202,7 +204,7 @@ func demonstrateConsumerAnalytics(consumerName string, reader *zerocopy.ZeroCopy
 				genreMap[genre]++
 			}
 		}
-		
+
 		if detailed {
 			slog.Info("Genre analysis",
 				"consumer", consumerName,
@@ -210,18 +212,18 @@ func demonstrateConsumerAnalytics(consumerName string, reader *zerocopy.ZeroCopy
 				"unique_genres", len(genreMap),
 				"access_method", "zero-copy field access")
 		}
-		
+
 	case "QualityScorer":
 		// Score movie quality based on runtime and year
 		qualityScores := make(map[uint32]float64)
-		
+
 		for i := 0; i < movies.Len(); i++ {
 			movie := movies.At(i)
 			// Simple quality scoring algorithm
 			score := float64(movie.RuntimeMin())/120.0 + float64(movie.Year()-1990)/30.0
 			qualityScores[movie.Id()] = score
 		}
-		
+
 		if detailed {
 			slog.Info("Quality scoring",
 				"consumer", consumerName,
@@ -229,7 +231,7 @@ func demonstrateConsumerAnalytics(consumerName string, reader *zerocopy.ZeroCopy
 				"access_method", "zero-copy computation")
 		}
 	}
-	
+
 	processingTime := time.Since(start)
 	if detailed {
 		slog.Info("Consumer completed",
@@ -242,26 +244,26 @@ func demonstrateConsumerAnalytics(consumerName string, reader *zerocopy.ZeroCopy
 
 func demonstratePerformanceComparison(dataset []zerocopy.MovieData) {
 	slog.Info("=== Performance Comparison: Zero-Copy vs Traditional ===")
-	
+
 	// Create Cap'n Proto dataset for zero-copy access
 	_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		slog.Error("Failed to create message", "error", err)
 		return
 	}
-	
+
 	movieDataset, err := movie.NewRootMovieDataset(seg)
 	if err != nil {
 		slog.Error("Failed to create dataset", "error", err)
 		return
 	}
-	
+
 	movies, err := movieDataset.NewMovies(int32(len(dataset)))
 	if err != nil {
 		slog.Error("Failed to create movies", "error", err)
 		return
 	}
-	
+
 	// Populate Cap'n Proto data
 	for i, movieData := range dataset {
 		m := movies.At(i)
@@ -269,7 +271,7 @@ func demonstratePerformanceComparison(dataset []zerocopy.MovieData) {
 		m.SetTitle(movieData.Title)
 		m.SetYear(movieData.Year)
 		m.SetRuntimeMin(movieData.RuntimeMin)
-		
+
 		if len(movieData.Genres) > 0 {
 			genres, _ := m.NewGenres(int32(len(movieData.Genres)))
 			for j, genre := range movieData.Genres {
@@ -277,9 +279,9 @@ func demonstratePerformanceComparison(dataset []zerocopy.MovieData) {
 			}
 		}
 	}
-	
+
 	iterations := 100
-	
+
 	// Zero-copy access benchmark
 	start := time.Now()
 	for i := 0; i < iterations; i++ {
@@ -293,7 +295,7 @@ func demonstratePerformanceComparison(dataset []zerocopy.MovieData) {
 		_ = totalRuntime
 	}
 	zeroCopyTime := time.Since(start)
-	
+
 	// Traditional access benchmark (using copied data)
 	type CopiedMovie struct {
 		ID         uint32
@@ -302,7 +304,7 @@ func demonstratePerformanceComparison(dataset []zerocopy.MovieData) {
 		RuntimeMin uint16
 		Genres     []string
 	}
-	
+
 	copiedMovies := make([]CopiedMovie, len(dataset))
 	for i, movieData := range dataset {
 		copiedMovies[i] = CopiedMovie{
@@ -313,7 +315,7 @@ func demonstratePerformanceComparison(dataset []zerocopy.MovieData) {
 			Genres:     movieData.Genres,
 		}
 	}
-	
+
 	start = time.Now()
 	for i := 0; i < iterations; i++ {
 		var totalRuntime uint64
@@ -324,14 +326,14 @@ func demonstratePerformanceComparison(dataset []zerocopy.MovieData) {
 		_ = totalRuntime
 	}
 	traditionalTime := time.Since(start)
-	
+
 	// Report results
 	slog.Info("Performance comparison results",
 		"iterations", iterations,
 		"movies_per_iteration", len(dataset),
 		"zero_copy_time", zeroCopyTime,
 		"traditional_time", traditionalTime)
-	
+
 	if traditionalTime < zeroCopyTime {
 		ratio := float64(zeroCopyTime) / float64(traditionalTime)
 		slog.Info("Performance analysis",
@@ -344,7 +346,7 @@ func demonstratePerformanceComparison(dataset []zerocopy.MovieData) {
 			"result", "Zero-copy access faster",
 			"zero_copy_advantage", fmt.Sprintf("%.2fx", ratio))
 	}
-	
+
 	// Memory usage comparison
 	slog.Info("Memory efficiency analysis",
 		"traditional_approach", "Each consumer copies entire dataset",
@@ -355,27 +357,27 @@ func demonstratePerformanceComparison(dataset []zerocopy.MovieData) {
 
 func generateLargeMovieDataset(count int) []zerocopy.MovieData {
 	movies := make([]zerocopy.MovieData, count)
-	
+
 	genres := []string{
 		"Action", "Adventure", "Animation", "Biography", "Comedy", "Crime", "Documentary",
 		"Drama", "Family", "Fantasy", "History", "Horror", "Music", "Mystery", "Romance",
 		"Sci-Fi", "Sport", "Thriller", "War", "Western",
 	}
-	
+
 	adjectives := []string{
 		"Amazing", "Incredible", "Fantastic", "Epic", "Legendary", "Ultimate", "Super",
 		"Great", "Awesome", "Brilliant", "Magnificent", "Spectacular", "Outstanding",
 	}
-	
+
 	nouns := []string{
 		"Journey", "Adventure", "Story", "Quest", "Mission", "Discovery", "Legacy",
 		"Chronicles", "Saga", "Tale", "Legend", "Mystery", "Secret", "Code",
 	}
-	
+
 	for i := 0; i < count; i++ {
 		// Generate realistic movie data
 		id := uint32(i + 1)
-		
+
 		// Generate movie title
 		adjective := adjectives[rand.Intn(len(adjectives))]
 		noun := nouns[rand.Intn(len(nouns))]
@@ -383,18 +385,18 @@ func generateLargeMovieDataset(count int) []zerocopy.MovieData {
 		if i%10 == 0 {
 			title = fmt.Sprintf("%s %d", title, (i/10)+1) // Add sequels
 		}
-		
+
 		// Generate release year (1970-2024)
 		year := uint16(1970 + rand.Intn(55))
-		
+
 		// Generate runtime (80-180 minutes)
 		runtime := uint16(80 + rand.Intn(100))
-		
+
 		// Generate genres (1-3 genres per movie)
 		numGenres := 1 + rand.Intn(3)
 		movieGenres := make([]string, numGenres)
 		usedGenres := make(map[int]bool)
-		
+
 		for j := 0; j < numGenres; j++ {
 			var genreIndex int
 			for {
@@ -406,7 +408,7 @@ func generateLargeMovieDataset(count int) []zerocopy.MovieData {
 			}
 			movieGenres[j] = genres[genreIndex]
 		}
-		
+
 		movies[i] = zerocopy.MovieData{
 			ID:         id,
 			Title:      title,
@@ -415,6 +417,6 @@ func generateLargeMovieDataset(count int) []zerocopy.MovieData {
 			Genres:     movieGenres,
 		}
 	}
-	
+
 	return movies
 }

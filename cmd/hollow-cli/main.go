@@ -21,13 +21,13 @@ func main() {
 		printHelp()
 		return
 	}
-	
+
 	// Get the command (first argument)
 	command := os.Args[1]
-	
+
 	// Remove the command from arguments so flag.Parse works correctly
 	os.Args = append(os.Args[:1], os.Args[2:]...)
-	
+
 	// Define command-specific flags
 	dataFileFlag := flag.String("data", "", "Data file to process")
 	versionFlag := flag.Int64("version", 0, "Version number")
@@ -36,10 +36,10 @@ func main() {
 	_ = flag.String("endpoint", "localhost:9000", "S3 endpoint")
 	_ = flag.String("bucket", "hollow-test", "S3 bucket name")
 	verboseFlag := flag.Bool("verbose", false, "Verbose output")
-	
+
 	// Parse the remaining flags
 	flag.Parse()
-	
+
 	// Execute the appropriate command
 	switch command {
 	case "help":
@@ -123,7 +123,7 @@ func runProducer(storeType, dataFile string, verbose bool) {
 
 	// Run a cycle with test data
 	ctx := context.Background()
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		// Add some test data
 		for i := 0; i < 10; i++ {
 			ws.Add(fmt.Sprintf("test_data_%d", i))
@@ -133,6 +133,14 @@ func runProducer(storeType, dataFile string, verbose bool) {
 			ws.Add(fmt.Sprintf("data_from_file:%s", dataFile))
 		}
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Producer cycle failed: %v\n", err)
+		os.Exit(1)
+	}
+	if version == 0 {
+		// Optional: clarify empty cycle to users
+		fmt.Fprintln(os.Stderr, "No data produced (empty cycle).")
+	}
 
 	if verbose {
 		fmt.Printf("Producer cycle completed, version: %d\n", version)
@@ -301,7 +309,7 @@ func runSchemaValidation(dataFile string, verbose bool) {
 	// Determine schema format and parse accordingly
 	var schemas []schema.Schema
 	var parseErr error
-	
+
 	// Try parsing based on file extension
 	if extension == "capnp" {
 		// Parse as Cap'n Proto schema
@@ -309,7 +317,7 @@ func runSchemaValidation(dataFile string, verbose bool) {
 	} else {
 		// Try parsing as legacy DSL format first
 		schemas, parseErr = schema.ParseSchemaCollection(string(schemaData))
-		
+
 		// If that fails, try Cap'n Proto format as fallback
 		if parseErr != nil {
 			schemas, parseErr = schema.ParseCapnProtoSchemas(string(schemaData))
@@ -356,7 +364,7 @@ func runSchemaValidation(dataFile string, verbose bool) {
 		// Print detailed schema information
 		for _, s := range sortedSchemas {
 			fmt.Printf("\nSchema: %s (Type: %v)\n", s.GetName(), s.GetSchemaType())
-			
+
 			switch typedSchema := s.(type) {
 			case schema.ObjectSchema:
 				fmt.Printf("  Fields: %d\n", len(typedSchema.Fields))

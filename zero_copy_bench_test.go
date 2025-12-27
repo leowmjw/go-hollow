@@ -45,7 +45,7 @@ func BenchmarkZeroCopyVsCopy(b *testing.B) {
 func benchmarkZeroCopyAccess(b *testing.B, recordCount int) {
 	// Setup: Create Cap'n Proto data once
 	zeroCopyData := generateZeroCopyMovieData(recordCount)
-	
+
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -60,12 +60,12 @@ func benchmarkZeroCopyAccess(b *testing.B, recordCount int) {
 			runtime := movieData.Movie.RuntimeMin()
 			genres, _ := movieData.Movie.Genres()
 			genreCount := genres.Len()
-			
+
 			totalRuntime += uint64(runtime)
 			_ = year
 			_ = genreCount
 		}
-		
+
 		// Prevent optimization
 		if totalRuntime == 0 {
 			b.Fatal("Expected non-zero runtime")
@@ -81,7 +81,7 @@ func benchmarkZeroCopyAccess(b *testing.B, recordCount int) {
 func benchmarkCopyAccess(b *testing.B, recordCount int) {
 	// Setup: Create traditional Go structs (requires copying)
 	copyData := generateMovieData(recordCount)
-	
+
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -95,12 +95,12 @@ func benchmarkCopyAccess(b *testing.B, recordCount int) {
 			year := movieData.Year
 			runtime := movieData.RuntimeMin
 			genreCount := len(movieData.Genres)
-			
+
 			totalRuntime += uint64(runtime)
 			_ = year
 			_ = genreCount
 		}
-		
+
 		// Prevent optimization
 		if totalRuntime == 0 {
 			b.Fatal("Expected non-zero runtime")
@@ -139,7 +139,7 @@ func BenchmarkZeroCopyProducerConsumer(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// Producer writes zero-copy data
-		version, err := prod.RunCycleE(ctx, func(ws *internal.WriteState) {
+		version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 			for _, movieData := range zeroCopyData {
 				// Convert Cap'n Proto struct to internal format
 				title, _ := movieData.Movie.Title()
@@ -178,7 +178,7 @@ func BenchmarkZeroCopyProducerConsumer(b *testing.B) {
 // BenchmarkMemoryFootprintZeroCopy measures memory usage with zero-copy access
 func BenchmarkMemoryFootprintZeroCopy(b *testing.B) {
 	recordCount := 1000
-	
+
 	b.Run("ZeroCopy", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -264,13 +264,13 @@ func BenchmarkSerializationZeroCopy(b *testing.B) {
 					Genres:     []string{"Action", "Drama"},
 				}
 			}
-			
+
 			// Simulate serialization cost
 			var totalBytes int
 			for _, movie := range movies {
 				totalBytes += len(movie.Title)
 				totalBytes += len(movie.Genres) * 10 // estimate
-				totalBytes += 8 // other fields
+				totalBytes += 8                      // other fields
 			}
 			_ = totalBytes
 		}

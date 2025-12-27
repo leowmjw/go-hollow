@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -9,9 +10,9 @@ import (
 	"capnproto.org/go/capnp/v3"
 	"github.com/leowmjw/go-hollow/blob"
 	"github.com/leowmjw/go-hollow/consumer"
+	iot "github.com/leowmjw/go-hollow/generated/go/iot"
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
-	iot "github.com/leowmjw/go-hollow/generated/go/iot"
 )
 
 // Device represents our Go struct for IoT devices
@@ -149,7 +150,7 @@ func main() {
 }
 
 func runDeviceProducer(ctx context.Context, prod *producer.Producer) (uint64, error) {
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		devices := loadDeviceData()
 		for _, device := range devices {
 			// Create Cap'n Proto message
@@ -189,11 +190,14 @@ func runDeviceProducer(ctx context.Context, prod *producer.Producer) (uint64, er
 
 		slog.Info("Registered IoT devices", "count", len(devices))
 	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to run device producer cycle: %w", err)
+	}
 	return uint64(version), nil
 }
 
 func runMetricsProducer(ctx context.Context, prod *producer.Producer) (uint64, error) {
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		metrics := loadMetricsData()
 		for _, metric := range metrics {
 			// Create Cap'n Proto message
@@ -235,11 +239,14 @@ func runMetricsProducer(ctx context.Context, prod *producer.Producer) (uint64, e
 
 		slog.Info("Ingested IoT metrics", "count", len(metrics))
 	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to run metrics producer cycle: %w", err)
+	}
 	return uint64(version), nil
 }
 
 func runAlertProducer(ctx context.Context, prod *producer.Producer) (uint64, error) {
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		alerts := generateAlertsFromMetrics()
 		for _, alert := range alerts {
 			// Create Cap'n Proto message
@@ -289,6 +296,9 @@ func runAlertProducer(ctx context.Context, prod *producer.Producer) (uint64, err
 
 		slog.Info("Generated alerts from metrics", "count", len(alerts))
 	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to run alert producer cycle: %w", err)
+	}
 	return uint64(version), nil
 }
 
@@ -365,17 +375,17 @@ func generateAlertsFromMetrics() []Alert {
 	return []Alert{
 		{
 			ID: 4001, DeviceID: 3001, MetricType: "temperature", Severity: "warning",
-			Message: "Temperature above normal range (>25°C)",
+			Message:     "Temperature above normal range (>25°C)",
 			TriggeredAt: baseTime - 300, ResolvedAt: 0, // Still active
 		},
 		{
 			ID: 4002, DeviceID: 3002, MetricType: "humidity", Severity: "info",
-			Message: "Humidity level normal after maintenance",
+			Message:     "Humidity level normal after maintenance",
 			TriggeredAt: baseTime - 1800, ResolvedAt: baseTime - 900,
 		},
 		{
 			ID: 4003, DeviceID: 3007, MetricType: "voltage", Severity: "critical",
-			Message: "Voltage fluctuation detected - requires immediate attention",
+			Message:     "Voltage fluctuation detected - requires immediate attention",
 			TriggeredAt: baseTime - 600, ResolvedAt: 0, // Still active
 		},
 	}
@@ -383,16 +393,16 @@ func generateAlertsFromMetrics() []Alert {
 
 func demonstrateRealtimeMonitoring() {
 	slog.Info("Real-time monitoring operations:")
-	
+
 	devices := loadDeviceData()
 	metrics := loadMetricsData()
-	
+
 	// 1. Device status monitoring
 	deviceBySerial := make(map[string]Device)
 	for _, device := range devices {
 		deviceBySerial[device.Serial] = device
 	}
-	
+
 	// 2. Latest metrics by device
 	latestMetricsByDevice := make(map[uint32]map[string]Metric)
 	for _, metric := range metrics {
@@ -404,7 +414,7 @@ func demonstrateRealtimeMonitoring() {
 			latestMetricsByDevice[metric.DeviceID][metric.Type] = metric
 		}
 	}
-	
+
 	// 3. Device health check
 	currentTime := uint64(time.Now().Unix())
 	slog.Info("Device health status:")
@@ -414,21 +424,21 @@ func demonstrateRealtimeMonitoring() {
 		if timeSinceLastSeen > 300 { // 5 minutes
 			status = "OFFLINE"
 		}
-		
+
 		metricCount := len(latestMetricsByDevice[device.ID])
-		slog.Info("Device status", "serial", device.Serial, "status", status, 
+		slog.Info("Device status", "serial", device.Serial, "status", status,
 			"location", device.Location, "active_metrics", metricCount)
 	}
-	
+
 	slog.Info("✅ Real-time monitoring: device status and metric tracking operational")
 }
 
 func demonstrateTimeSeriesAnalytics() {
 	slog.Info("Time-series analytics operations:")
-	
+
 	devices := loadDeviceData()
 	metrics := loadMetricsData()
-	
+
 	// 1. Temperature trend analysis
 	tempMetrics := make([]Metric, 0)
 	for _, metric := range metrics {
@@ -436,12 +446,12 @@ func demonstrateTimeSeriesAnalytics() {
 			tempMetrics = append(tempMetrics, metric)
 		}
 	}
-	
+
 	if len(tempMetrics) > 0 {
 		var sum, min, max float64
 		min = tempMetrics[0].Value
 		max = tempMetrics[0].Value
-		
+
 		for _, metric := range tempMetrics {
 			sum += metric.Value
 			if metric.Value < min {
@@ -451,23 +461,23 @@ func demonstrateTimeSeriesAnalytics() {
 				max = metric.Value
 			}
 		}
-		
+
 		avg := sum / float64(len(tempMetrics))
-		slog.Info("Temperature analytics", "samples", len(tempMetrics), 
+		slog.Info("Temperature analytics", "samples", len(tempMetrics),
 			"avg", avg, "min", min, "max", max)
 	}
-	
+
 	// 2. Device utilization by type
 	deviceTypeCount := make(map[string]int)
 	for _, device := range devices {
 		deviceTypeCount[device.Type]++
 	}
-	
+
 	slog.Info("Device distribution by type:")
 	for deviceType, count := range deviceTypeCount {
 		slog.Info("Device type", "type", deviceType, "count", count)
 	}
-	
+
 	// 3. Data quality analysis
 	var qualitySum uint64
 	var qualityCount int
@@ -475,67 +485,71 @@ func demonstrateTimeSeriesAnalytics() {
 		qualitySum += uint64(metric.Quality)
 		qualityCount++
 	}
-	
+
 	if qualityCount > 0 {
 		avgQuality := qualitySum / uint64(qualityCount)
 		slog.Info("Data quality analysis", "avg_quality", avgQuality, "total_samples", qualityCount)
 	}
-	
+
 	slog.Info("✅ Time-series analytics: trend analysis and quality monitoring operational")
 }
 
 func demonstrateMemoryManagement(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer) {
 	slog.Info("Memory management simulation:")
-	
+
 	// Simulate high-frequency data ingestion (hot data)
 	hotDataProducer := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcer),
 	)
-	
+
 	slog.Info("Ingesting hot data (recent metrics)...")
-	hotVersion := hotDataProducer.RunCycle(ctx, func(ws *internal.WriteState) {
+	hotVersion, err := hotDataProducer.RunCycle(ctx, func(ws *internal.WriteState) {
 		// Generate recent high-frequency metrics
 		baseTime := uint64(time.Now().Unix())
 		for i := 0; i < 50; i++ { // 50 recent data points
 			metric := Metric{
-				DeviceID: 3001, Type: "temperature", 
-				Value: 22.0 + float64(i%10)*0.1,
+				DeviceID: 3001, Type: "temperature",
+				Value:     22.0 + float64(i%10)*0.1,
 				Timestamp: baseTime - uint64(i*10), // Every 10 seconds
-				Quality: 99, Unit: "°C",
+				Quality:   99, Unit: "°C",
 			}
 			ws.Add(metric)
 		}
 	})
-	
+	if err != nil {
+		slog.Error("Failed to ingest hot data", "error", err)
+		return
+	}
+
 	// Create memory-optimized consumer
 	memoryConsumer := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
 		consumer.WithAnnouncer(announcer),
 	)
-	
+
 	// Load hot data (simulating memory pinning)
 	if err := memoryConsumer.TriggerRefreshTo(ctx, int64(hotVersion)); err != nil {
 		slog.Error("Memory consumer refresh failed", "error", err)
 		return
 	}
-	
+
 	slog.Info("✅ Hot data loaded and pinned in memory")
-	
+
 	// Simulate cold data scenario
 	slog.Info("Simulating cold data management...")
-	
+
 	// In a real implementation, this would:
 	// 1. Pin frequently accessed data in memory
 	// 2. Unpin old data to free memory
 	// 3. Use blob storage tiering (memory -> SSD -> S3)
-	
+
 	slog.Info("Memory management features demonstrated:")
 	slog.Info("  - Hot data pinning: Recent metrics kept in memory")
 	slog.Info("  - Cold data unpinning: Old metrics moved to storage")
 	slog.Info("  - Blob lifecycle: Automatic tiering to S3")
 	slog.Info("  - Memory efficiency: Configurable cache sizes")
-	
+
 	slog.Info("✅ Memory management: pin/unpin operations and blob lifecycle operational")
 }
 

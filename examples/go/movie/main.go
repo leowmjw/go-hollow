@@ -12,10 +12,10 @@ import (
 	"capnproto.org/go/capnp/v3"
 	"github.com/leowmjw/go-hollow/blob"
 	"github.com/leowmjw/go-hollow/consumer"
-	"github.com/leowmjw/go-hollow/internal"
-	"github.com/leowmjw/go-hollow/producer"
 	common "github.com/leowmjw/go-hollow/generated/go/common"
 	movie "github.com/leowmjw/go-hollow/generated/go/movie"
+	"github.com/leowmjw/go-hollow/internal"
+	"github.com/leowmjw/go-hollow/producer"
 )
 
 // Define Go structs for our data that can be used with indexes
@@ -49,8 +49,8 @@ func main() {
 	prod := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcer),
-		producer.WithPrimaryKey("Movie", "ID"),        // Movies identified by ID field
-		producer.WithPrimaryKey("Rating", "MovieID"),  // Ratings identified by MovieID+UserID composite
+		producer.WithPrimaryKey("Movie", "ID"),       // Movies identified by ID field
+		producer.WithPrimaryKey("Rating", "MovieID"), // Ratings identified by MovieID+UserID composite
 	)
 
 	// Load and produce movie data
@@ -87,7 +87,7 @@ func main() {
 }
 
 func runProducer(ctx context.Context, prod *producer.Producer) (uint64, error) {
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		// Load movies from CSV
 		if err := loadMovies(ws); err != nil {
 			slog.Error("Failed to load movies", "error", err)
@@ -100,6 +100,9 @@ func runProducer(ctx context.Context, prod *producer.Producer) (uint64, error) {
 			return
 		}
 	})
+	if err != nil {
+		return 0, fmt.Errorf("RunCycle failed: %w", err)
+	}
 	return uint64(version), nil
 }
 
@@ -152,7 +155,7 @@ func loadMovies(ws *internal.WriteState) error {
 
 		// Store both Cap'n Proto data and Go struct for indexing
 		ws.Add(movieStruct.ToPtr())
-		
+
 		// Also add a Go struct version for indexing
 		movieGo := Movie{
 			ID:     uint32(movieID),
@@ -229,7 +232,7 @@ func loadRatings(ws *internal.WriteState) error {
 
 		// Store both Cap'n Proto data and Go struct for indexing
 		ws.Add(ratingStruct.ToPtr())
-		
+
 		// Also add a Go struct version for indexing
 		ratingGo := Rating{
 			MovieID:   uint32(movieID),
@@ -253,13 +256,13 @@ func demonstrateIndexes(cons *consumer.Consumer) {
 
 	// Create a WriteState to populate with our demo data
 	writeState := internal.NewWriteState()
-	
+
 	// Add sample movies
 	movies := loadSampleMovies()
 	for _, movie := range movies {
 		writeState.Add(movie)
 	}
-	
+
 	// Add sample ratings
 	ratings := loadSampleRatings()
 	for _, rating := range ratings {
@@ -276,14 +279,14 @@ func demonstrateIndexes(cons *consumer.Consumer) {
 
 func demonstrateIndexesDirectly(movies []Movie, ratings []Rating) {
 	slog.Info("Demonstrating index functionality with direct data structures")
-	
+
 	// Create simple in-memory indexes to demonstrate the concepts
 	// 1. Unique Key Index for Movie ID
 	movieByID := make(map[uint32]Movie)
 	for _, movie := range movies {
 		movieByID[movie.ID] = movie
 	}
-	
+
 	// 2. Hash Index for Movie Genres
 	moviesByGenre := make(map[string][]Movie)
 	for _, movie := range movies {
@@ -291,25 +294,25 @@ func demonstrateIndexesDirectly(movies []Movie, ratings []Rating) {
 			moviesByGenre[genre] = append(moviesByGenre[genre], movie)
 		}
 	}
-	
+
 	// 3. Primary Key Index for Ratings (MovieID + UserID)
 	ratingByKey := make(map[string]Rating)
 	for _, rating := range ratings {
 		key := fmt.Sprintf("%d_%d", rating.MovieID, rating.UserID)
 		ratingByKey[key] = rating
 	}
-	
+
 	slog.Info("Created in-memory indexes")
-	
+
 	// Demonstrate queries
-	
+
 	// 1. Find movie by ID
 	if movie, found := movieByID[1]; found {
 		slog.Info("Found movie by ID", "movieId", 1, "title", movie.Title, "year", movie.Year)
 	} else {
 		slog.Info("Movie not found by ID", "movieId", 1)
 	}
-	
+
 	// 2. Find movies by genre
 	dramaMovies := moviesByGenre["Drama"]
 	slog.Info("Found movies by genre", "genre", "Drama", "count", len(dramaMovies))
@@ -318,7 +321,7 @@ func demonstrateIndexesDirectly(movies []Movie, ratings []Rating) {
 			slog.Info("Drama movie", "title", movie.Title, "year", movie.Year)
 		}
 	}
-	
+
 	// 3. Find rating by primary key
 	ratingKey := fmt.Sprintf("%d_%d", 1, 101)
 	if rating, found := ratingByKey[ratingKey]; found {
@@ -326,40 +329,40 @@ func demonstrateIndexesDirectly(movies []Movie, ratings []Rating) {
 	} else {
 		slog.Info("Rating not found", "movieId", 1, "userId", 101)
 	}
-	
+
 	slog.Info("Index demonstration completed successfully")
 }
 
 func populateConsumerForDemo(cons *consumer.Consumer, version uint64) {
 	slog.Info("Manually populating consumer with demo data for index demonstration")
-	
+
 	// Create a new WriteState with our demo data, then convert it to ReadState
 	// This simulates what would happen during proper blob deserialization
 	writeState := internal.NewWriteState()
-	
+
 	// Add sample movies
 	movies := loadSampleMovies()
 	for _, movie := range movies {
 		writeState.Add(movie)
 	}
-	
+
 	// Add sample ratings
 	ratings := loadSampleRatings()
 	for _, rating := range ratings {
 		writeState.Add(rating)
 	}
-	
+
 	// Create ReadState from WriteState data
 	readState := internal.NewReadState(int64(version))
-	
+
 	// Manually copy data from WriteState to ReadState
 	// This is what would normally be done during blob deserialization
 	transferDataToReadState(readState, writeState)
-	
+
 	// Set the read state in the consumer's engine
 	engine := cons.GetStateEngine()
 	engine.SetCurrentState(readState)
-	
+
 	slog.Info("Consumer populated with demo data", "movies", len(movies), "ratings", len(ratings))
 }
 
@@ -389,11 +392,11 @@ func loadSampleRatings() []Rating {
 func transferDataToReadState(readState *internal.ReadState, writeState *internal.WriteState) {
 	// This is a demonstration hack - in a real implementation, data would be properly
 	// deserialized from Cap'n Proto blobs during consumer.loadSnapshot()
-	
+
 	// Since ReadState doesn't have public methods to add data, we'll use a different approach
 	// We'll create mock types that the index system can find
 	slog.Info("Transferring demo data to read state")
-	
+
 	// Note: In a real application, this data would come from producer-consumer workflow
 	// For this demo, we're showing the index capabilities directly
 }

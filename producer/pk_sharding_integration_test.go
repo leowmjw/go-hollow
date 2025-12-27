@@ -27,18 +27,18 @@ func TestProducerReshardingRecomputesPKShards(t *testing.T) {
 
 	// Produce 10 records in one cycle -> expected new shard count = ceil(10/3) = 4
 	ctx := context.Background()
-	_, err := p.RunCycleE(ctx, func(ws *internal.WriteState) {
+	_, err := p.RunCycle(ctx, func(ws *internal.WriteState) {
 		for i := 0; i < 10; i++ {
 			ws.Add(&integUser{ID: int64(1000 + i), Name: fmt.Sprintf("u%d", i)})
 		}
 	})
 	if err != nil {
-		t.Fatalf("RunCycleE failed: %v", err)
+		t.Fatalf("RunCycle failed: %v", err)
 	}
 
 	engine := p.GetWriteEngine()
-    // GetData returns a map[string][]any keyed by type name; index with typeName.
-    // Each element is an *internal.RecordInfo wrapping the original value and computed shard.
+	// GetData returns a map[string][]any keyed by type name; index with typeName.
+	// Each element is an *internal.RecordInfo wrapping the original value and computed shard.
 	records := engine.GetWriteState().GetData()[typeName]
 	if len(records) != 10 {
 		t.Fatalf("expected 10 records, got %d", len(records))
@@ -46,7 +46,7 @@ func TestProducerReshardingRecomputesPKShards(t *testing.T) {
 
 	newShardCount := 4 // as computed by performResharding
 	for i, rec := range records {
-        // Assert to *internal.RecordInfo to access Ordinal/Shard and original Value.
+		// Assert to *internal.RecordInfo to access Ordinal/Shard and original Value.
 		ri, ok := rec.(*internal.RecordInfo)
 		if !ok {
 			t.Fatalf("record %d not internal.RecordInfo", i)
@@ -73,13 +73,13 @@ func TestProducerPKShardStabilityAcrossCycles(t *testing.T) {
 	typeName := internal.GetTypeName(&integUser{})
 	p := NewProducer(
 		WithBlobStore(store),
-		WithTypeResharding(false),      // no resharding between cycles
+		WithTypeResharding(false), // no resharding between cycles
 		WithTargetMaxTypeShardSize(100),
 		WithPrimaryKey(typeName, "ID"),
 	)
 
 	// Cycle 1
-	v1, err := p.RunCycleE(ctx, func(ws *internal.WriteState) {
+	v1, err := p.RunCycle(ctx, func(ws *internal.WriteState) {
 		for i := 0; i < 5; i++ {
 			ws.Add(&integUser{ID: int64(2000 + i), Name: fmt.Sprintf("u%d", i)})
 		}
@@ -100,7 +100,7 @@ func TestProducerPKShardStabilityAcrossCycles(t *testing.T) {
 	}
 
 	// Cycle 2: same PKs but different names (updates)
-	v2, err := p.RunCycleE(ctx, func(ws *internal.WriteState) {
+	v2, err := p.RunCycle(ctx, func(ws *internal.WriteState) {
 		for i := 0; i < 5; i++ {
 			ws.Add(&integUser{ID: int64(2000 + i), Name: fmt.Sprintf("u%d_v2", i)})
 		}

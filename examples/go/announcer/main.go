@@ -11,9 +11,9 @@ import (
 	"capnproto.org/go/capnp/v3"
 	"github.com/leowmjw/go-hollow/blob"
 	"github.com/leowmjw/go-hollow/consumer"
+	movie "github.com/leowmjw/go-hollow/generated/go/movie"
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
-	movie "github.com/leowmjw/go-hollow/generated/go/movie"
 )
 
 // Simple data structures for testing
@@ -86,14 +86,14 @@ func demonstratePubSub(announcer *blob.GoroutineAnnouncer) {
 		return
 	}
 	defer subscription1.Close()
-	
+
 	subscription2, err := announcer.Subscribe(10)
 	if err != nil {
 		slog.Error("Failed to create subscription2", "error", err)
 		return
 	}
 	defer subscription2.Close()
-	
+
 	subscription3, err := announcer.Subscribe(10)
 	if err != nil {
 		slog.Error("Failed to create subscription3", "error", err)
@@ -120,16 +120,17 @@ func demonstratePubSub(announcer *blob.GoroutineAnnouncer) {
 	checkSubscriberReceived := func(subscriber <-chan int64, name string) {
 		received := make([]int64, 0, 5)
 		timeout := time.After(1 * time.Second)
-		
-		for len(received) < 5 {
+
+	loop:
+		for {
 			select {
 			case version := <-subscriber:
 				received = append(received, version)
 			case <-timeout:
-				break
+				break loop
 			}
 		}
-		
+
 		slog.Info("Subscriber results", "name", name, "received_count", len(received), "versions", received)
 	}
 
@@ -148,10 +149,10 @@ func demonstratePubSub(announcer *blob.GoroutineAnnouncer) {
 	// Clean up - close subscriptions (which automatically unsubscribes)
 	subscription1.Close()
 	subscription3.Close() // subscription2 already closed
-	
+
 	// Give time for cleanup
 	time.Sleep(50 * time.Millisecond)
-	
+
 	slog.Info("✅ Pub/Sub pattern: Multiple subscribers work correctly")
 }
 
@@ -160,7 +161,7 @@ func demonstrateVersionWaiting(announcer *blob.GoroutineAnnouncer) {
 
 	// Test 1: Wait for a version that will arrive in time
 	slog.Info("Test 1: Waiting for version 10 (will arrive in 200ms)")
-	
+
 	go func() {
 		time.Sleep(200 * time.Millisecond)
 		announcer.Announce(10)
@@ -169,7 +170,7 @@ func demonstrateVersionWaiting(announcer *blob.GoroutineAnnouncer) {
 	start := time.Now()
 	err := announcer.WaitForVersion(10, 1*time.Second)
 	duration := time.Since(start)
-	
+
 	if err != nil {
 		slog.Error("Failed to wait for version 10", "error", err, "duration", duration)
 	} else {
@@ -178,11 +179,11 @@ func demonstrateVersionWaiting(announcer *blob.GoroutineAnnouncer) {
 
 	// Test 2: Wait for a version that won't arrive (timeout)
 	slog.Info("Test 2: Waiting for version 100 (will timeout)")
-	
+
 	start = time.Now()
 	err = announcer.WaitForVersion(100, 300*time.Millisecond)
 	duration = time.Since(start)
-	
+
 	if err != nil {
 		slog.Info("Expected timeout occurred", "error", err, "duration", duration)
 	} else {
@@ -191,11 +192,11 @@ func demonstrateVersionWaiting(announcer *blob.GoroutineAnnouncer) {
 
 	// Test 3: Wait for a version that's already available
 	slog.Info("Test 3: Waiting for version 5 (already available)")
-	
+
 	start = time.Now()
 	err = announcer.WaitForVersion(5, 1*time.Second)
 	duration = time.Since(start)
-	
+
 	if err != nil {
 		slog.Error("Failed to get already available version", "error", err)
 	} else {
@@ -219,9 +220,9 @@ func demonstratePinUnpin(announcer *blob.GoroutineAnnouncer) {
 	// Test pin functionality
 	pinVersion := int64(22)
 	announcer.Pin(pinVersion)
-	
-	slog.Info("Pinned to version", "version", pinVersion, 
-		"is_pinned", announcer.IsPinned(), 
+
+	slog.Info("Pinned to version", "version", pinVersion,
+		"is_pinned", announcer.IsPinned(),
 		"pinned_version", announcer.GetPinnedVersion(),
 		"latest_returned", announcer.GetLatestVersion())
 
@@ -230,13 +231,13 @@ func demonstratePinUnpin(announcer *blob.GoroutineAnnouncer) {
 		announcer.Announce(i)
 	}
 
-	slog.Info("After announcing versions 26-30 while pinned", 
+	slog.Info("After announcing versions 26-30 while pinned",
 		"latest_returned", announcer.GetLatestVersion(),
 		"is_pinned", announcer.IsPinned())
 
 	// Test unpin
 	announcer.Unpin()
-	slog.Info("After unpinning", 
+	slog.Info("After unpinning",
 		"latest_returned", announcer.GetLatestVersion(),
 		"is_pinned", announcer.IsPinned())
 
@@ -252,7 +253,7 @@ func demonstratePinUnpin(announcer *blob.GoroutineAnnouncer) {
 	// Check what subscriber receives
 	timeout := time.After(100 * time.Millisecond)
 	receivedVersions := make([]int64, 0)
-	
+
 	for {
 		select {
 		case version := <-subscriber:
@@ -261,14 +262,14 @@ func demonstratePinUnpin(announcer *blob.GoroutineAnnouncer) {
 			goto done
 		}
 	}
-	
+
 done:
 	slog.Info("Subscriber received during pin operations", "versions", receivedVersions)
-	
+
 	// Unpin and see what happens
 	announcer.Unpin()
 	time.Sleep(50 * time.Millisecond)
-	
+
 	// Check for more notifications
 	select {
 	case version := <-subscriber:
@@ -289,7 +290,7 @@ func demonstrateMultiConsumerCoordination(ctx context.Context, blobStore blob.Bl
 		consumer.WithBlobRetriever(blobStore),
 		consumer.WithAnnouncer(announcer),
 	)
-	
+
 	consumer2 := consumer.NewConsumer(
 		consumer.WithBlobRetriever(blobStore),
 		consumer.WithAnnouncer(announcer),
@@ -307,32 +308,40 @@ func demonstrateMultiConsumerCoordination(ctx context.Context, blobStore blob.Bl
 	)
 
 	// Version 40: Basic data
-	version40 := producer.RunCycle(ctx, func(ws *internal.WriteState) {
+	version40, err := producer.RunCycle(ctx, func(ws *internal.WriteState) {
 		for i := 0; i < 3; i++ {
 			data := TestData{ID: uint32(i + 100), Message: fmt.Sprintf("Data %d v40", i), Version: 40}
 			ws.Add(data)
 		}
 		slog.Info("Produced data for version 40")
 	})
+	if err != nil {
+		slog.Error("RunCycle failed for version 40", "error", err)
+		return
+	}
 
 	// All consumers refresh to version 40
 	consumer1.TriggerRefreshTo(ctx, int64(version40))
 	consumer2.TriggerRefreshTo(ctx, int64(version40))
 	consumer3.TriggerRefreshTo(ctx, int64(version40))
-	
+
 	slog.Info("All consumers refreshed to version 40")
 
 	// Version 41: Additional data
-	version41 := producer.RunCycle(ctx, func(ws *internal.WriteState) {
+	version41, err := producer.RunCycle(ctx, func(ws *internal.WriteState) {
 		for i := 0; i < 2; i++ {
 			data := TestData{ID: uint32(i + 200), Message: fmt.Sprintf("Data %d v41", i), Version: 41}
 			ws.Add(data)
 		}
 		slog.Info("Produced data for version 41")
 	})
+	if err != nil {
+		slog.Error("RunCycle failed for version 41", "error", err)
+		return
+	}
 
 	// Consumer coordination test: Different refresh patterns
-	
+
 	// Consumer 1: Immediately refreshes to latest
 	go func() {
 		time.Sleep(100 * time.Millisecond)
@@ -360,15 +369,19 @@ func demonstrateMultiConsumerCoordination(ctx context.Context, blobStore blob.Bl
 
 	// Version 42: Test with pinning
 	slog.Info("Testing consumer coordination with pinning")
-	
+
 	// Pin consumer 2 to version 40
 	announcer.Pin(int64(version40))
-	
-	version42 := producer.RunCycle(ctx, func(ws *internal.WriteState) {
+
+	version42, err := producer.RunCycle(ctx, func(ws *internal.WriteState) {
 		data := TestData{ID: 999, Message: "Pinned test data v42", Version: 42}
 		ws.Add(data)
 		slog.Info("Produced data for version 42")
 	})
+	if err != nil {
+		slog.Error("RunCycle failed for version 42", "error", err)
+		return
+	}
 
 	// Consumer 1 and 3 should see version 42, but consumer 2 stays pinned
 	consumer1.TriggerRefreshTo(ctx, int64(version42))
@@ -376,7 +389,7 @@ func demonstrateMultiConsumerCoordination(ctx context.Context, blobStore blob.Bl
 
 	// Consumer 2 should still see the pinned version
 	pinnedVersion := announcer.GetLatestVersion() // Should return pinned version
-	slog.Info("Consumer coordination with pinning", 
+	slog.Info("Consumer coordination with pinning",
 		"actual_latest", version42,
 		"pinned_version", pinnedVersion,
 		"consumer2_sees", pinnedVersion)
@@ -385,7 +398,7 @@ func demonstrateMultiConsumerCoordination(ctx context.Context, blobStore blob.Bl
 	announcer.Unpin()
 	time.Sleep(100 * time.Millisecond)
 	consumer2.TriggerRefreshTo(ctx, int64(version42))
-	
+
 	slog.Info("✅ Multi-consumer coordination: Different refresh patterns and pinning work correctly")
 }
 
@@ -395,7 +408,7 @@ func demonstrateHighFrequency(announcer *blob.GoroutineAnnouncer) {
 	// Create subscribers to measure performance
 	numSubscribers := 10
 	subscribers := make([]chan int64, numSubscribers)
-	
+
 	for i := 0; i < numSubscribers; i++ {
 		subscribers[i] = make(chan int64, 1000) // Large buffer for high frequency
 		announcer.SubscribeChannel(subscribers[i])
@@ -404,13 +417,13 @@ func demonstrateHighFrequency(announcer *blob.GoroutineAnnouncer) {
 	// Performance test: rapid announcements
 	numAnnouncements := 1000
 	startVersion := int64(1000)
-	
-	slog.Info("Starting high-frequency test", 
+
+	slog.Info("Starting high-frequency test",
 		"announcements", numAnnouncements,
 		"subscribers", numSubscribers)
 
 	start := time.Now()
-	
+
 	// Send announcements as fast as possible
 	for i := 0; i < numAnnouncements; i++ {
 		err := announcer.Announce(startVersion + int64(i))
@@ -418,9 +431,9 @@ func demonstrateHighFrequency(announcer *blob.GoroutineAnnouncer) {
 			slog.Error("Announcement failed", "version", startVersion+int64(i), "error", err)
 		}
 	}
-	
+
 	announceTime := time.Since(start)
-	slog.Info("Announcement phase completed", "duration", announceTime, 
+	slog.Info("Announcement phase completed", "duration", announceTime,
 		"rate", float64(numAnnouncements)/announceTime.Seconds())
 
 	// Wait for all subscribers to receive all announcements
@@ -429,14 +442,14 @@ func demonstrateHighFrequency(announcer *blob.GoroutineAnnouncer) {
 	// Check how many announcements each subscriber received
 	var wg sync.WaitGroup
 	results := make([]int, numSubscribers)
-	
+
 	for i := 0; i < numSubscribers; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
 			count := 0
 			timeout := time.After(1 * time.Second)
-			
+
 			for {
 				select {
 				case <-subscribers[idx]:
@@ -453,14 +466,14 @@ func demonstrateHighFrequency(announcer *blob.GoroutineAnnouncer) {
 			}
 		}(i)
 	}
-	
+
 	wg.Wait()
 
 	// Report results
 	totalReceived := 0
 	for i, count := range results {
 		totalReceived += count
-		slog.Info("Subscriber performance", "subscriber", i, "received", count, 
+		slog.Info("Subscriber performance", "subscriber", i, "received", count,
 			"percentage", float64(count*100)/float64(numAnnouncements))
 	}
 
@@ -483,21 +496,21 @@ func demonstrateErrorScenarios(announcer *blob.GoroutineAnnouncer) {
 
 	// Test 1: Closed channel handling
 	slog.Info("Test 1: Dead subscriber cleanup")
-	
+
 	deadSubscriber := make(chan int64, 1)
 	announcer.SubscribeChannel(deadSubscriber)
 	close(deadSubscriber) // Close the channel immediately
-	
+
 	subscriberCount := announcer.GetSubscriberCount()
 	slog.Info("Subscribed dead channel", "subscriber_count", subscriberCount)
-	
+
 	// Announce something - this should clean up the dead subscriber
 	announcer.Announce(2000)
 	time.Sleep(100 * time.Millisecond) // Give time for cleanup
-	
+
 	newCount := announcer.GetSubscriberCount()
 	slog.Info("After cleanup", "subscriber_count", newCount)
-	
+
 	if newCount < subscriberCount {
 		slog.Info("✅ Dead subscriber was cleaned up")
 	} else {
@@ -506,40 +519,40 @@ func demonstrateErrorScenarios(announcer *blob.GoroutineAnnouncer) {
 
 	// Test 2: Full channel handling
 	slog.Info("Test 2: Full channel handling")
-	
+
 	fullSubscriber := make(chan int64, 1) // Very small buffer
 	announcer.SubscribeChannel(fullSubscriber)
-	
+
 	// Fill the channel
 	fullSubscriber <- 999
-	
+
 	// Try to announce - should handle the full channel gracefully
 	announcer.Announce(2001)
 	announcer.Announce(2002)
 	time.Sleep(50 * time.Millisecond)
-	
+
 	announcer.Unsubscribe(fullSubscriber)
 	close(fullSubscriber)
 	slog.Info("✅ Full channel handled gracefully")
 
 	// Test 3: Resource cleanup on Close
 	slog.Info("Test 3: Resource cleanup")
-	
+
 	// Create a new announcer for cleanup testing
 	testAnnouncer := blob.NewGoroutineAnnouncer()
-	
+
 	// Add some subscribers
 	testSub1 := make(chan int64, 10)
 	testSub2 := make(chan int64, 10)
 	testAnnouncer.SubscribeChannel(testSub1)
 	testAnnouncer.SubscribeChannel(testSub2)
-	
+
 	beforeCount := testAnnouncer.GetSubscriberCount()
 	slog.Info("Test announcer setup", "subscriber_count", beforeCount)
-	
+
 	// Close the announcer
 	testAnnouncer.Close()
-	
+
 	// Channels should be closed
 	select {
 	case _, ok := <-testSub1:
@@ -554,9 +567,9 @@ func demonstrateErrorScenarios(announcer *blob.GoroutineAnnouncer) {
 
 	// Test 4: Context cancellation
 	slog.Info("Test 4: Context cancellation behavior")
-	
+
 	cancelAnnouncer := blob.NewGoroutineAnnouncer()
-	
+
 	// Start a wait operation
 	go func() {
 		err := cancelAnnouncer.WaitForVersion(9999, 5*time.Second)
@@ -564,11 +577,11 @@ func demonstrateErrorScenarios(announcer *blob.GoroutineAnnouncer) {
 			slog.Info("Wait operation cancelled as expected", "error", err)
 		}
 	}()
-	
+
 	// Close the announcer to cancel context
 	time.Sleep(100 * time.Millisecond)
 	cancelAnnouncer.Close()
-	
+
 	time.Sleep(200 * time.Millisecond)
 	slog.Info("✅ Context cancellation handled properly")
 
@@ -599,24 +612,26 @@ func demonstrateRealIntegration(ctx context.Context, blobStore blob.BlobStore, a
 	slog.Info("Scenario: Real-time movie database updates")
 
 	// Version 50: Initial movie catalog
-	version50 := prod.RunCycle(ctx, func(ws *internal.WriteState) {
-		movies := []struct{ ID uint32; Title string; Year uint16 }{
+	version50, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+		movies := []struct {
+			ID    uint32
+			Title string
+			Year  uint16
+		}{
 			{50001, "The Matrix", 1999},
 			{50002, "Inception", 2010},
 			{50003, "Interstellar", 2014},
 		}
-
-		for _, movieData := range movies {
-			_, seg := capnp.NewSingleSegmentMessage(nil)
-			movieStruct, _ := movie.NewMovie(seg)
-			movieStruct.SetId(movieData.ID)
-			movieStruct.SetTitle(movieData.Title)
-			movieStruct.SetYear(movieData.Year)
-			ws.Add(movieStruct.ToPtr())
+		for _, movie := range movies {
+			data := TestData{ID: movie.ID, Message: movie.Title, Version: int64(movie.Year)}
+			ws.Add(data)
 		}
-		
-		slog.Info("Produced initial movie catalog", "version", 50, "movies", len(movies))
+		slog.Info("Produced initial movie catalog for version 50")
 	})
+	if err != nil {
+		slog.Error("RunCycle failed for version 50", "error", err)
+		return
+	}
 
 	// Immediate consumer reacts to announcements
 	go func() {
@@ -649,8 +664,12 @@ func demonstrateRealIntegration(ctx context.Context, blobStore blob.BlobStore, a
 	announcer.SubscribeChannel(monitor)
 	defer announcer.Unsubscribe(monitor)
 
-	version51 := prod.RunCycle(ctx, func(ws *internal.WriteState) {
-		newMovies := []struct{ ID uint32; Title string; Year uint16 }{
+	version51, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+		newMovies := []struct {
+			ID    uint32
+			Title string
+			Year  uint16
+		}{
 			{50004, "Dune", 2021},
 			{50005, "Blade Runner 2049", 2017},
 		}
@@ -663,9 +682,13 @@ func demonstrateRealIntegration(ctx context.Context, blobStore blob.BlobStore, a
 			movieStruct.SetYear(movieData.Year)
 			ws.Add(movieStruct.ToPtr())
 		}
-		
-		slog.Info("Produced updated movie catalog", "version", 51, "new_movies", len(newMovies))
+
+		slog.Info("Added new movies to catalog", "version", 51, "movies", len(newMovies))
 	})
+	if err != nil {
+		slog.Error("RunCycle failed for version 51", "error", err)
+		return
+	}
 
 	// Monitor the announcement
 	select {
@@ -684,11 +707,15 @@ func demonstrateRealIntegration(ctx context.Context, blobStore blob.BlobStore, a
 	announcer.Pin(int64(version50)) // Pin to stable version
 
 	// New version during maintenance (should not affect pinned consumers)
-	version52 := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version52, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		maintenanceData := TestData{ID: 99999, Message: "Maintenance data", Version: 52}
 		ws.Add(maintenanceData)
 		slog.Info("Produced maintenance data", "version", 52)
 	})
+	if err != nil {
+		slog.Error("RunCycle failed for version 52", "error", err)
+		return
+	}
 
 	// Consumers should still see pinned version
 	pinnedVersion := announcer.GetLatestVersion()
@@ -704,7 +731,7 @@ func demonstrateRealIntegration(ctx context.Context, blobStore blob.BlobStore, a
 	slog.Info("After maintenance", "consumers_see", finalVersion)
 
 	close(monitor)
-	
+
 	slog.Info("✅ Real integration: Producer/consumer with full announcer features work perfectly")
 	slog.Info("  - Real-time updates: Immediate and delayed consumer patterns")
 	slog.Info("  - Monitoring: Subscription-based announcement tracking")

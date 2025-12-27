@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"sync"
 	"time"
@@ -12,8 +13,6 @@ import (
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
 )
-
-
 
 // DataRecord represents a simple data structure for our example
 type DataRecord struct {
@@ -25,7 +24,7 @@ type DataRecord struct {
 
 // WriterStats tracks statistics for each writer
 type WriterStats struct {
-	WriterID      string
+	WriterID         string
 	VersionsProduced int
 	RecordsWritten   int
 	LastWriteTime    time.Time
@@ -33,12 +32,12 @@ type WriterStats struct {
 
 // ConsumerStats tracks statistics for each consumer
 type ConsumerStats struct {
-	ConsumerID     string
-	VersionsRead   int
-	RecordsRead    int
-	LastReadTime   time.Time
-	ZeroCopyReads  int
-	FallbackReads  int
+	ConsumerID    string
+	VersionsRead  int
+	RecordsRead   int
+	LastReadTime  time.Time
+	ZeroCopyReads int
+	FallbackReads int
 }
 
 func main() {
@@ -64,18 +63,18 @@ func main() {
 
 func runMultiWriterZeroCopyDemo(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer) {
 	fmt.Println("🔧 Initializing shared storage and configuration...")
-	
+
 	var wg sync.WaitGroup
-	
+
 	// Statistics tracking
 	writerStats := make(map[string]*WriterStats)
 	consumerStats := make(map[string]*ConsumerStats)
 	var statsMutex sync.RWMutex
-	
+
 	// Create cancelable context for coordinated shutdown
 	demoCtx, demoCancel := context.WithCancel(ctx)
 	defer demoCancel()
-	
+
 	// Announcer now directly implements AnnouncementWatcher - no adapter needed!
 
 	// Start multiple writers
@@ -83,7 +82,7 @@ func runMultiWriterZeroCopyDemo(ctx context.Context, blobStore blob.BlobStore, a
 	for i := 0; i < numWriters; i++ {
 		writerID := fmt.Sprintf("Writer-%d", i+1)
 		writerStats[writerID] = &WriterStats{WriterID: writerID}
-		
+
 		wg.Add(1)
 		go func(id string) {
 			defer wg.Done()
@@ -96,7 +95,7 @@ func runMultiWriterZeroCopyDemo(ctx context.Context, blobStore blob.BlobStore, a
 	for i := 0; i < numConsumers; i++ {
 		consumerID := fmt.Sprintf("Consumer-%d", i+1)
 		consumerStats[consumerID] = &ConsumerStats{ConsumerID: consumerID}
-		
+
 		wg.Add(1)
 		go func(id string) {
 			defer wg.Done()
@@ -131,9 +130,9 @@ func runWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Ann
 		producer.WithSerializationMode(internal.ZeroCopyMode),
 		producer.WithNumStatesBetweenSnapshots(snapshotFreq),
 	)
-	
+
 	// Ensure first cycle creates a snapshot blob
-	initialVersion := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	initialVersion, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		// Add a single initial record to create first snapshot
 		ws.Add(DataRecord{
 			ID:        fmt.Sprintf("%s-initial", writerID),
@@ -142,11 +141,15 @@ func runWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Ann
 			WriterID:  writerID,
 		})
 	})
-	
+	if err != nil {
+		log.Printf("Writer %s: Failed to create initial version: %v", writerID, err)
+		return
+	}
+
 	// Announcer automatically announces new versions - no manual update needed!
-	
+
 	fmt.Printf("📝 %s produced initial version %d with snapshot\n", writerID, initialVersion)
-	
+
 	// Update statistics for initial version
 	mutex.Lock()
 	stats[writerID].VersionsProduced++
@@ -160,7 +163,7 @@ func runWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Ann
 	recordCounter := 0
 	maxRounds := 10
 	roundsCompleted := 0
-	
+
 	for roundsCompleted < maxRounds {
 		select {
 		case <-ctx.Done():
@@ -173,12 +176,16 @@ func runWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Ann
 			recordCounter += batchSize
 
 			// Write data using producer
-			version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+			version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 				for _, record := range records {
 					ws.Add(record)
 				}
 			})
-			
+			if err != nil {
+				log.Printf("Writer %s: Failed to write batch: %v", writerID, err)
+				continue // Skip this batch and try again
+			}
+
 			// Announcer automatically announces new versions - no manual update needed!
 
 			// Update statistics
@@ -192,7 +199,7 @@ func runWriter(ctx context.Context, blobStore blob.BlobStore, announcer blob.Ann
 			fmt.Printf("📝 %s produced version %d with %d records (round %d/%d)\n", writerID, version, len(records), roundsCompleted, maxRounds)
 		}
 	}
-	
+
 	// Exit after completing all rounds
 	fmt.Printf("📝 Writer %s completed all %d rounds, exiting\n", writerID, maxRounds)
 	return
@@ -203,7 +210,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 
 	// Create consumers with initial delay to ensure producers have time to create initial versions
 	time.Sleep(500 * time.Millisecond)
-	
+
 	// First create a basic consumer with the blob retriever and announcer (no adapter needed!)
 	// Use Cap'n Proto serializer to match the producer configuration
 	regularConsumer := consumer.NewConsumer(
@@ -211,7 +218,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 		consumer.WithAnnouncer(announcer),
 		consumer.WithSerializer(internal.NewCapnProtoSerializer()),
 	)
-	
+
 	// Create zero-copy consumer using the same pattern
 	zeroCopyConsumer := consumer.NewZeroCopyConsumer(
 		consumer.WithBlobRetriever(blobStore),
@@ -224,7 +231,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 	lastVersion := uint64(0)
 	maxRounds := 6
 	roundsCompleted := 0
-	
+
 	for roundsCompleted < maxRounds {
 		select {
 		case <-ctx.Done():
@@ -242,7 +249,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 				// No versions available yet
 				continue
 			}
-			
+
 			// Check if we've already processed this version
 			if uint64(latestVersion) <= lastVersion {
 				continue // No new data
@@ -277,7 +284,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 					if err == nil {
 						se := regularConsumer.GetStateEngine()
 						if se != nil {
-						recordCount = se.TotalRecords()
+							recordCount = se.TotalRecords()
 						}
 					}
 				}
@@ -293,7 +300,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 				} else {
 					se = regularConsumer.GetStateEngine()
 				}
-				
+
 				// Inspect the actual data
 				if se != nil {
 					state := se.GetCurrentState()
@@ -302,7 +309,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 						actualRecordCount := 0
 						for typeName, records := range data {
 							actualRecordCount += len(records)
-							fmt.Printf("🔍 [VALIDATION] %s version %d: Type '%s' has %d records\n", 
+							fmt.Printf("🔍 [VALIDATION] %s version %d: Type '%s' has %d records\n",
 								consumerID, latestVersion, typeName, len(records))
 							// Show first few records
 							for i, record := range records {
@@ -312,7 +319,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 							}
 						}
 						if actualRecordCount != recordCount {
-							fmt.Printf("⚠️  [WARNING] %s: TotalRecords()=%d but actual count=%d\n", 
+							fmt.Printf("⚠️  [WARNING] %s: TotalRecords()=%d but actual count=%d\n",
 								consumerID, recordCount, actualRecordCount)
 						}
 					}
@@ -335,12 +342,12 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 					readType = "zero-copy"
 				}
 				roundsCompleted++
-				fmt.Printf("👀 %s read version %d (%s) with %d total records (round %d/%d)\n", 
+				fmt.Printf("👀 %s read version %d (%s) with %d total records (round %d/%d)\n",
 					consumerID, latestVersion, readType, recordCount, roundsCompleted, maxRounds)
 			}
 		}
 	}
-	
+
 	// Exit after completing all rounds
 	fmt.Printf("👀 Consumer %s completed all %d rounds, exiting\n", consumerID, maxRounds)
 	return
@@ -349,7 +356,7 @@ func runConsumer(ctx context.Context, blobStore blob.BlobStore, announcer blob.A
 func generateRecords(writerID string, startID int, count int) []DataRecord {
 	records := make([]DataRecord, count)
 	now := time.Now().Unix()
-	
+
 	for i := 0; i < count; i++ {
 		records[i] = DataRecord{
 			ID:        fmt.Sprintf("%s-record-%d", writerID, startID+i),
@@ -358,11 +365,9 @@ func generateRecords(writerID string, startID int, count int) []DataRecord {
 			WriterID:  writerID,
 		}
 	}
-	
+
 	return records
 }
-
-
 
 func reportStatistics(ctx context.Context, writerStats map[string]*WriterStats, consumerStats map[string]*ConsumerStats, mutex *sync.RWMutex, cancel context.CancelFunc) {
 	ticker := time.NewTicker(2 * time.Second)
@@ -378,26 +383,26 @@ func reportStatistics(ctx context.Context, writerStats map[string]*WriterStats, 
 			return
 		case <-ticker.C:
 			fmt.Println("\n📊 === STATISTICS REPORT ===")
-			
+
 			mutex.RLock()
-			
+
 			// Check if all writers and consumers are done
 			allWritersDone := true
 			allConsumersDone := true
-			
+
 			// Writer statistics
 			fmt.Println("📝 Writers:")
 			for _, stat := range writerStats {
 				fmt.Printf("  %s: %d versions, %d records, last write: %s\n",
 					stat.WriterID, stat.VersionsProduced, stat.RecordsWritten,
 					stat.LastWriteTime.Format("15:04:05"))
-					
+
 				// Writer is done if it produced writerMaxRounds+1 versions (initial + regular rounds)
 				if stat.VersionsProduced < writerMaxRounds+1 {
 					allWritersDone = false
 				}
 			}
-			
+
 			// Consumer statistics
 			fmt.Println("👀 Consumers:")
 			for _, stat := range consumerStats {
@@ -405,16 +410,16 @@ func reportStatistics(ctx context.Context, writerStats map[string]*WriterStats, 
 					stat.ConsumerID, stat.VersionsRead, stat.RecordsRead,
 					stat.ZeroCopyReads, stat.FallbackReads,
 					stat.LastReadTime.Format("15:04:05"))
-					
+
 				// Consumer is done if it read consumerMaxRounds versions
 				if stat.VersionsRead < consumerMaxRounds {
 					allConsumersDone = false
 				}
 			}
-			
+
 			mutex.RUnlock()
 			fmt.Println("========================\n")
-			
+
 			// If all writers and consumers are done, print final stats and exit
 			if allWritersDone && allConsumersDone {
 				fmt.Println("\n🏁 All writers and consumers completed their rounds!")
@@ -457,7 +462,7 @@ func printFinalStats(writerStats map[string]*WriterStats, consumerStats map[stri
 	fmt.Printf("  Total records written: %d\n", totalRecords)
 	fmt.Printf("  Total zero-copy reads: %d\n", totalZeroCopyReads)
 	fmt.Printf("  Total fallback reads: %d\n", totalFallbackReads)
-	
+
 	if totalZeroCopyReads+totalFallbackReads > 0 {
 		zeroCopyRate := float64(totalZeroCopyReads) / float64(totalZeroCopyReads+totalFallbackReads) * 100
 		fmt.Printf("  Zero-copy success rate: %.1f%%\n", zeroCopyRate)

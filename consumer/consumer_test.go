@@ -2,19 +2,19 @@ package consumer
 
 import (
 	"context"
-	"testing"
 	"github.com/leowmjw/go-hollow/blob"
 	"github.com/leowmjw/go-hollow/internal"
 	"github.com/leowmjw/go-hollow/producer"
+	"testing"
 )
 
 // TestConsumer_BasicRefresh tests basic consumer refresh functionality
 func TestConsumer_BasicRefresh(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
-	
+
 	// Publish a snapshot
 	prod := producer.NewProducer(producer.WithBlobStore(blobStore))
-	version := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("test_data")
 	})
 
@@ -33,22 +33,22 @@ func TestConsumer_BasicRefresh(t *testing.T) {
 // TestConsumer_DeltaTraversal tests delta chain traversal
 func TestConsumer_DeltaTraversal(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
-	
+
 	prod := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithNumStatesBetweenSnapshots(2), // Only snapshot every 2 states
 	)
 
 	// Create versions with deltas
-	v1 := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	v1, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("data1")
 	})
-	
-	_ = prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+
+	_, _ = prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("data2")
 	})
-	
-	v3 := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+
+	v3, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("data3")
 	})
 
@@ -71,7 +71,7 @@ func TestConsumer_DeltaTraversal(t *testing.T) {
 	if blobStore.RetrieveSnapshotBlob(v3) == nil {
 		t.Error("Should have snapshot for v3")
 	}
-	
+
 	// v2 could be either snapshot or delta depending on the producer logic
 	// The important thing is that consumer can traverse to v3 successfully
 }
@@ -80,7 +80,7 @@ func TestConsumer_DeltaTraversal(t *testing.T) {
 func TestConsumer_AnnouncementWatcher(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	announcement := blob.NewInMemoryAnnouncement()
-	
+
 	prod := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcement),
@@ -93,7 +93,7 @@ func TestConsumer_AnnouncementWatcher(t *testing.T) {
 	)
 
 	// Publish v1
-	v1 := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	v1, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("data1")
 	})
 
@@ -104,7 +104,7 @@ func TestConsumer_AnnouncementWatcher(t *testing.T) {
 	}
 
 	// Publish v2
-	v2 := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	v2, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("data2")
 	})
 
@@ -122,9 +122,9 @@ func TestConsumer_AnnouncementWatcher(t *testing.T) {
 // TestConsumer_TypeFiltering tests type filtering during consumption
 func TestConsumer_TypeFiltering(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
-	
+
 	prod := producer.NewProducer(producer.WithBlobStore(blobStore))
-	version := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("string_data")
 		ws.Add(42) // integer data
 	})

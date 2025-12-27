@@ -15,12 +15,12 @@ func TestConsumer_ErrorHandling(t *testing.T) {
 	// Test consumer with empty blob store
 	blobStore := blob.NewInMemoryBlobStore()
 	consumer := NewConsumer(WithBlobRetriever(blobStore))
-	
+
 	err := consumer.TriggerRefresh(context.Background())
 	if err == nil {
 		t.Error("expected error when refreshing with no versions available")
 	}
-	
+
 	// Test refresh to specific version with no data
 	err = consumer.TriggerRefreshTo(context.Background(), 1)
 	if err == nil {
@@ -31,7 +31,7 @@ func TestConsumer_ErrorHandling(t *testing.T) {
 func TestConsumer_RefreshToSameVersion(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	prod := producer.NewProducer(producer.WithBlobStore(blobStore))
-	version := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("test_data")
 	})
 
@@ -51,12 +51,12 @@ func TestConsumer_RefreshToSameVersion(t *testing.T) {
 func TestConsumer_WithVersionCursor(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	announcer := blob.NewInMemoryFeed()
-	
+
 	consumer := NewConsumer(
 		WithBlobRetriever(blobStore),
 		WithVersionCursor(announcer),
 	)
-	
+
 	if !consumer.autoRefresh {
 		t.Error("expected autoRefresh to be enabled with version cursor")
 	}
@@ -66,7 +66,7 @@ func TestConsumer_WithVersionCursor(t *testing.T) {
 		WithBlobRetriever(blobStore),
 		WithAnnouncementWatcher(announcer),
 	)
-	
+
 	if !consumer2.autoRefresh {
 		t.Error("expected autoRefresh to be enabled with announcement watcher")
 	}
@@ -75,7 +75,7 @@ func TestConsumer_WithVersionCursor(t *testing.T) {
 func TestConsumer_WithSerializer(t *testing.T) {
 	serializer := internal.NewCapnProtoSerializer()
 	consumer := NewConsumer(WithSerializer(serializer))
-	
+
 	if consumer.serializer != serializer {
 		t.Error("expected custom serializer to be set")
 	}
@@ -83,9 +83,9 @@ func TestConsumer_WithSerializer(t *testing.T) {
 
 func TestConsumer_TypeFilterExclude(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
-	
+
 	prod := producer.NewProducer(producer.WithBlobStore(blobStore))
-	version := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("string_data")
 		ws.Add(42)
 		ws.Add(true)
@@ -117,7 +117,7 @@ func TestConsumer_TypeFilterExclude(t *testing.T) {
 
 func TestConsumer_DeltaOperations(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
-	
+
 	// Create producer with primary keys for delta generation
 	prod := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
@@ -125,20 +125,20 @@ func TestConsumer_DeltaOperations(t *testing.T) {
 	)
 
 	// Initial state
-	v1 := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	v1, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add(TestRecord{ID: "1", Name: "First"})
 		ws.Add(TestRecord{ID: "2", Name: "Second"})
 	})
 
 	// Update and delete
-	v2 := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	v2, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add(TestRecord{ID: "1", Name: "Updated First"}) // Update
 		// ID "2" is deleted by omission
 		ws.Add(TestRecord{ID: "3", Name: "Third"}) // Add
 	})
 
 	consumer := NewConsumer(WithBlobRetriever(blobStore))
-	
+
 	// Test refreshing through deltas
 	err := consumer.TriggerRefreshTo(context.Background(), v2)
 	if err != nil {
@@ -164,7 +164,7 @@ type TestRecord struct {
 func TestConsumer_RefreshWithCursor(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	announcer := blob.NewInMemoryFeed()
-	
+
 	prod := producer.NewProducer(
 		producer.WithBlobStore(blobStore),
 		producer.WithAnnouncer(announcer),
@@ -176,7 +176,7 @@ func TestConsumer_RefreshWithCursor(t *testing.T) {
 	)
 
 	// Publish data
-	version := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("test_data")
 	})
 
@@ -193,7 +193,7 @@ func TestConsumer_RefreshWithCursor(t *testing.T) {
 
 func TestConsumer_BlobPlanningErrors(t *testing.T) {
 	consumer := NewConsumer(WithBlobRetriever(blob.NewInMemoryBlobStore()))
-	
+
 	// Test planning with no data
 	_, err := consumer.planBlobs(0, 1)
 	if err == nil {
@@ -203,9 +203,9 @@ func TestConsumer_BlobPlanningErrors(t *testing.T) {
 
 func TestConsumer_LoadSnapshotWithTypeFilter(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
-	
+
 	prod := producer.NewProducer(producer.WithBlobStore(blobStore))
-	version := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("string_data")
 		ws.Add(42)
 	})
@@ -272,7 +272,7 @@ func TestConsumer_ApplyDeltaToEmptyState(t *testing.T) {
 func TestConsumer_GetRetriever(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	consumer := NewConsumer(WithBlobRetriever(blobStore))
-	
+
 	retriever := consumer.GetRetriever()
 	if retriever != blobStore {
 		t.Error("GetRetriever should return the configured blob store")
@@ -282,7 +282,7 @@ func TestConsumer_GetRetriever(t *testing.T) {
 func TestConsumer_AutoRefreshSubscription(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	feed := blob.NewInMemoryFeed()
-	
+
 	// Create consumer with subscription support
 	consumer := NewConsumer(
 		WithBlobRetriever(blobStore),
@@ -296,7 +296,7 @@ func TestConsumer_AutoRefreshSubscription(t *testing.T) {
 	)
 
 	// Publish data which should trigger auto-refresh
-	version := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version, _ := prod.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("auto_refresh_test")
 	})
 
@@ -319,12 +319,12 @@ func TestConsumer_AutoRefreshSubscription(t *testing.T) {
 
 func TestZeroCopyConsumer_Basic(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
-	
+
 	zcConsumer := NewZeroCopyConsumer(WithBlobRetriever(blobStore))
 	if zcConsumer == nil {
 		t.Fatal("expected zero-copy consumer to be created")
 	}
-	
+
 	if zcConsumer.Consumer == nil {
 		t.Error("embedded consumer should not be nil")
 	}
@@ -333,12 +333,12 @@ func TestZeroCopyConsumer_Basic(t *testing.T) {
 func TestZeroCopyConsumer_WithOptions(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	serializer := internal.NewCapnProtoSerializer()
-	
+
 	zcConsumer := NewZeroCopyConsumerWithOptions(
 		[]ConsumerOption{WithBlobRetriever(blobStore)},
 		[]ZeroCopyConsumerOption{WithZeroCopySerializer(serializer)},
 	)
-	
+
 	if zcConsumer.serializer != serializer {
 		t.Error("expected custom serializer to be set")
 	}
@@ -346,12 +346,12 @@ func TestZeroCopyConsumer_WithOptions(t *testing.T) {
 
 func TestZeroCopyConsumer_SerializationModeOption(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
-	
+
 	zcConsumer := NewZeroCopyConsumerWithOptions(
 		[]ConsumerOption{WithBlobRetriever(blobStore)},
 		[]ZeroCopyConsumerOption{WithZeroCopySerializationMode(internal.ZeroCopyMode)},
 	)
-	
+
 	if zcConsumer.serializer == nil {
 		t.Error("expected serializer to be set from mode")
 	}
@@ -363,7 +363,7 @@ func TestZeroCopyConsumer_SerializationModeOption(t *testing.T) {
 func TestZeroCopyConsumer_NoZeroCopyView(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	zcConsumer := NewZeroCopyConsumer(WithBlobRetriever(blobStore))
-	
+
 	// Test when no zero-copy view exists
 	view, exists := zcConsumer.GetZeroCopyView()
 	if exists {
@@ -372,7 +372,7 @@ func TestZeroCopyConsumer_NoZeroCopyView(t *testing.T) {
 	if view != nil {
 		t.Error("view should be nil when not exists")
 	}
-	
+
 	if zcConsumer.HasZeroCopySupport() {
 		t.Error("should not have zero-copy support initially")
 	}
@@ -381,7 +381,7 @@ func TestZeroCopyConsumer_NoZeroCopyView(t *testing.T) {
 func TestZeroCopyConsumer_GetDataFallback(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	zcConsumer := NewZeroCopyConsumer(WithBlobRetriever(blobStore))
-	
+
 	// Test fallback when no zero-copy view available
 	data := zcConsumer.GetDataWithZeroCopyPreference()
 	if data == nil {
@@ -395,7 +395,7 @@ func TestZeroCopyConsumer_GetDataFallback(t *testing.T) {
 func TestZeroCopyConsumer_CreateViewNoBlob(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	zcConsumer := NewZeroCopyConsumer(WithBlobRetriever(blobStore))
-	
+
 	// Test creating view when blob doesn't exist
 	err := zcConsumer.createZeroCopyViewForVersion(context.Background(), 999)
 	if err == nil {
@@ -405,13 +405,13 @@ func TestZeroCopyConsumer_CreateViewNoBlob(t *testing.T) {
 
 func TestZeroCopyConsumer_BlobSupportsZeroCopy(t *testing.T) {
 	zcConsumer := NewZeroCopyConsumer()
-	
+
 	// Test blob without metadata
 	blob1 := &blob.Blob{Data: []byte("test")}
 	if zcConsumer.blobSupportsZeroCopy(blob1) {
 		t.Error("blob without metadata should not support zero-copy")
 	}
-	
+
 	// Test blob with wrong metadata
 	blob2 := &blob.Blob{
 		Data:     []byte("test"),
@@ -420,7 +420,7 @@ func TestZeroCopyConsumer_BlobSupportsZeroCopy(t *testing.T) {
 	if zcConsumer.blobSupportsZeroCopy(blob2) {
 		t.Error("blob without serialization_mode should not support zero-copy")
 	}
-	
+
 	// Test blob with invalid serialization mode
 	blob3 := &blob.Blob{
 		Data:     []byte("test"),
@@ -429,7 +429,7 @@ func TestZeroCopyConsumer_BlobSupportsZeroCopy(t *testing.T) {
 	if zcConsumer.blobSupportsZeroCopy(blob3) {
 		t.Error("blob with invalid serialization_mode should not support zero-copy")
 	}
-	
+
 	// Test blob with traditional mode
 	blob4 := &blob.Blob{
 		Data:     []byte("test"),
@@ -438,7 +438,7 @@ func TestZeroCopyConsumer_BlobSupportsZeroCopy(t *testing.T) {
 	if zcConsumer.blobSupportsZeroCopy(blob4) {
 		t.Error("blob with traditional mode should not support zero-copy")
 	}
-	
+
 	// Test blob with zero-copy mode
 	blob5 := &blob.Blob{
 		Data:     []byte("test"),
@@ -454,11 +454,11 @@ func TestZeroCopyConsumer_GetSerializer(t *testing.T) {
 	customSerializer := internal.NewCapnProtoSerializer()
 	zcConsumer1 := NewZeroCopyConsumer()
 	zcConsumer1.serializer = customSerializer
-	
+
 	if zcConsumer1.getSerializer() != customSerializer {
 		t.Error("should return custom serializer when set")
 	}
-	
+
 	// Test with default serializer
 	zcConsumer2 := NewZeroCopyConsumer()
 	defaultSerializer := zcConsumer2.getSerializer()
@@ -475,24 +475,24 @@ func TestZeroCopyDataAccessor(t *testing.T) {
 	mockView := &mockZeroCopyView{
 		buffer: []byte("test buffer data"),
 	}
-	
+
 	accessor := NewZeroCopyDataAccessor(mockView)
 	if accessor == nil {
 		t.Fatal("expected accessor to be created")
 	}
-	
+
 	// Test buffer access
 	buffer := accessor.GetRawBuffer()
 	if string(buffer) != "test buffer data" {
 		t.Errorf("expected 'test buffer data', got %s", string(buffer))
 	}
-	
+
 	// Test buffer size
 	size := accessor.GetBufferSize()
 	if size != len("test buffer data") {
 		t.Errorf("expected %d, got %d", len("test buffer data"), size)
 	}
-	
+
 	// Test message access
 	msg, err := accessor.GetMessage()
 	if err != nil {
@@ -507,12 +507,12 @@ func TestZeroCopyQueryEngine(t *testing.T) {
 	mockView := &mockZeroCopyView{
 		buffer: make([]byte, 1024), // 1KB buffer
 	}
-	
+
 	engine := NewZeroCopyQueryEngine(mockView)
 	if engine == nil {
 		t.Fatal("expected query engine to be created")
 	}
-	
+
 	// Test record counting
 	count, err := engine.CountRecords()
 	if err != nil {
@@ -521,7 +521,7 @@ func TestZeroCopyQueryEngine(t *testing.T) {
 	if count != 16 { // 1024 / 64 = 16
 		t.Errorf("expected 16 records, got %d", count)
 	}
-	
+
 	// Test find by offset
 	data, err := engine.FindByOffset(100)
 	if err != nil {
@@ -530,7 +530,7 @@ func TestZeroCopyQueryEngine(t *testing.T) {
 	if len(data) != 64 {
 		t.Errorf("expected 64 bytes, got %d", len(data))
 	}
-	
+
 	// Test find by offset at end of buffer
 	data, err = engine.FindByOffset(1000)
 	if err != nil {
@@ -539,13 +539,13 @@ func TestZeroCopyQueryEngine(t *testing.T) {
 	if len(data) != 24 { // 1024 - 1000 = 24
 		t.Errorf("expected 24 bytes, got %d", len(data))
 	}
-	
+
 	// Test find by invalid offset
 	_, err = engine.FindByOffset(2000)
 	if err == nil {
 		t.Error("expected error for invalid offset")
 	}
-	
+
 	// Test field extraction
 	fields, err := engine.ExtractField("testField")
 	if err != nil {
@@ -576,14 +576,14 @@ func (m *mockZeroCopyView) GetByteBuffer() []byte {
 func TestConsumer_PanicOnIncompatibleOptions(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	typeFilter := internal.NewTypeFilter().Include("String")
-	
+
 	// This should panic
 	defer func() {
 		if r := recover(); r == nil {
 			t.Error("expected panic for incompatible options")
 		}
 	}()
-	
+
 	NewConsumer(
 		WithBlobRetriever(blobStore),
 		WithMemoryMode(internal.SharedMemoryLazy),

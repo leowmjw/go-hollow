@@ -82,11 +82,11 @@ func main() {
 func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.BlobStore, announcer blob.Announcer) {
 	// 1. Generate realistic commerce data
 	slog.Info("Generating realistic commerce dataset...")
-	
+
 	start := time.Now()
 	commerceData := generateCommerceDataset(10000, 50000, 5000) // 10K customers, 50K orders, 5K products
 	generationTime := time.Since(start)
-	
+
 	slog.Info("Commerce dataset generated",
 		"customers", len(commerceData.Customers),
 		"orders", len(commerceData.Orders),
@@ -95,7 +95,7 @@ func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.Blo
 
 	// 2. Write data using zero-copy serialization
 	slog.Info("Storing commerce data using zero-copy serialization...")
-	
+
 	start = time.Now()
 	version, err := writeCommerceDataset(ctx, blobStore, announcer, commerceData)
 	if err != nil {
@@ -103,7 +103,7 @@ func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.Blo
 		return
 	}
 	writeTime := time.Since(start)
-	
+
 	totalRecords := len(commerceData.Customers) + len(commerceData.Orders) + len(commerceData.Products)
 	slog.Info("Commerce data stored",
 		"version", version,
@@ -113,8 +113,6 @@ func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.Blo
 
 	// 3. Simulate multiple microservices consuming the same data simultaneously
 	slog.Info("Starting multiple microservices as zero-copy consumers...")
-	
-
 
 	microservices := []struct {
 		name        string
@@ -139,10 +137,10 @@ func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.Blo
 
 	// 5. Start all microservices concurrently (simulating real distributed architecture)
 	slog.Info("All microservices starting concurrent processing...")
-	
+
 	var wg sync.WaitGroup
 	results := make(chan MicroserviceResult, len(microservices))
-	
+
 	start = time.Now()
 	for _, service := range microservices {
 		wg.Add(1)
@@ -153,32 +151,32 @@ func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.Blo
 			workload    string
 		}) {
 			defer wg.Done()
-			
+
 			start := time.Now()
-			
+
 			if err := service.reader.RefreshTo(ctx, int64(version)); err != nil {
 				slog.Error("Service refresh failed", "service", service.name, "error", err)
 				results <- MicroserviceResult{ServiceName: service.name, ProcessingTime: time.Since(start), RecordsProcessed: 0}
 				return
 			}
-			
+
 			// Each service processes its workload using zero-copy access
 			processedRecords := processServiceWorkload(service.name, service.reader, service.workload)
-			
+
 			processingTime := time.Since(start)
 			results <- MicroserviceResult{
 				ServiceName:      service.name,
 				ProcessingTime:   processingTime,
 				RecordsProcessed: processedRecords,
 			}
-			
+
 		}(service)
 	}
-	
+
 	wg.Wait()
 	close(results)
 	totalTime := time.Since(start)
-	
+
 	// 6. Measure memory usage after all microservices
 	var memStatsAfter runtime.MemStats
 	runtime.GC()
@@ -186,7 +184,7 @@ func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.Blo
 
 	// 7. Collect and analyze results
 	slog.Info("All microservices completed concurrent processing")
-	
+
 	var totalRecordsProcessed int
 	for result := range results {
 		slog.Info("Microservice completed",
@@ -196,7 +194,7 @@ func demonstrateMultiServiceArchitecture(ctx context.Context, blobStore blob.Blo
 			"records_per_second", float64(result.RecordsProcessed)/result.ProcessingTime.Seconds())
 		totalRecordsProcessed += result.RecordsProcessed
 	}
-	
+
 	// 8. Memory efficiency analysis
 	memoryIncrease := memStatsAfter.Alloc - memStatsBefore.Alloc
 	slog.Info("Concurrent processing summary",
@@ -219,41 +217,41 @@ type MicroserviceResult struct {
 func processServiceWorkload(serviceName string, reader *zerocopy.ZeroCopyReader, workloadType string) int {
 	// Simulate different microservice workloads using zero-copy access
 	recordsProcessed := 0
-	
+
 	switch serviceName {
 	case "OrderProcessingService":
 		// Process orders for validation and fulfillment
 		recordsProcessed = simulateOrderProcessing(reader)
-		
+
 	case "CustomerAnalyticsService":
 		// Analyze customer behavior patterns
 		recordsProcessed = simulateCustomerAnalytics(reader)
-		
+
 	case "InventoryManagementService":
 		// Track product inventory levels
 		recordsProcessed = simulateInventoryManagement(reader)
-		
+
 	case "RecommendationService":
 		// Generate personalized recommendations
 		recordsProcessed = simulateRecommendationGeneration(reader)
-		
+
 	case "FraudDetectionService":
 		// Detect suspicious order patterns
 		recordsProcessed = simulateFraudDetection(reader)
-		
+
 	case "ReportingService":
 		// Generate comprehensive business reports
 		recordsProcessed = simulateReportGeneration(reader)
-		
+
 	case "PricingService":
 		// Calculate dynamic pricing strategies
 		recordsProcessed = simulatePricing(reader)
-		
+
 	case "NotificationService":
 		// Send customer notifications
 		recordsProcessed = simulateNotifications(reader)
 	}
-	
+
 	return recordsProcessed
 }
 
@@ -309,23 +307,23 @@ func simulateNotifications(reader *zerocopy.ZeroCopyReader) int {
 
 func demonstrateMemoryEfficiencyComparison(data CommerceData, numServices int) {
 	slog.Info("=== Memory Efficiency Comparison ===")
-	
+
 	// Calculate data size estimation
 	avgCustomerSize := 200 // bytes (approximate)
 	avgOrderSize := 300    // bytes (approximate)
 	avgProductSize := 250  // bytes (approximate)
-	
-	totalDataSize := len(data.Customers)*avgCustomerSize + 
-					len(data.Orders)*avgOrderSize + 
-					len(data.Products)*avgProductSize
-	
+
+	totalDataSize := len(data.Customers)*avgCustomerSize +
+		len(data.Orders)*avgOrderSize +
+		len(data.Products)*avgProductSize
+
 	slog.Info("Traditional approach analysis",
 		"approach", "Each microservice copies all needed data",
 		"estimated_data_size", fmt.Sprintf("%d KB", totalDataSize/1024),
 		"microservices", numServices,
 		"total_memory_required", fmt.Sprintf("%d KB", totalDataSize*numServices/1024),
 		"memory_overhead", "Linear growth with number of services")
-	
+
 	slog.Info("Zero-copy approach analysis",
 		"approach", "All microservices share the same data in memory",
 		"estimated_data_size", fmt.Sprintf("%d KB", totalDataSize/1024),
@@ -345,7 +343,7 @@ func writeCommerceDataset(ctx context.Context, blobStore blob.BlobStore, announc
 	)
 
 	// Write data using producer
-	version := prod.RunCycle(ctx, func(ws *internal.WriteState) {
+	version, err := prod.RunCycle(ctx, func(ws *internal.WriteState) {
 		// Add customers
 		for _, customer := range data.Customers {
 			ws.Add(customer)
@@ -359,7 +357,10 @@ func writeCommerceDataset(ctx context.Context, blobStore blob.BlobStore, announc
 			ws.Add(product)
 		}
 	})
-	
+	if err != nil {
+		return 0, fmt.Errorf("RunCycle failed: %w", err)
+	}
+
 	return uint64(version), nil
 }
 
@@ -367,7 +368,7 @@ func generateCommerceDataset(numCustomers, numOrders, numProducts int) CommerceD
 	customers := generateCustomers(numCustomers)
 	products := generateProducts(numProducts)
 	orders := generateOrders(numOrders, customers, products)
-	
+
 	return CommerceData{
 		Customers: customers,
 		Orders:    orders,
@@ -377,26 +378,26 @@ func generateCommerceDataset(numCustomers, numOrders, numProducts int) CommerceD
 
 func generateCustomers(count int) []CustomerData {
 	customers := make([]CustomerData, count)
-	
+
 	cities := []string{
 		"New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia",
 		"San Antonio", "San Diego", "Dallas", "San Jose", "Austin", "Jacksonville",
 	}
-	
+
 	firstNames := []string{
 		"John", "Jane", "Michael", "Sarah", "David", "Lisa", "Robert", "Emily",
 		"James", "Ashley", "William", "Jessica", "Christopher", "Amanda",
 	}
-	
+
 	lastNames := []string{
 		"Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller",
 		"Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez",
 	}
-	
+
 	for i := 0; i < count; i++ {
 		firstName := firstNames[rand.Intn(len(firstNames))]
 		lastName := lastNames[rand.Intn(len(lastNames))]
-		
+
 		customers[i] = CustomerData{
 			ID:           uint32(i + 1),
 			Email:        fmt.Sprintf("%s.%s%d@email.com", firstName, lastName, i),
@@ -406,32 +407,32 @@ func generateCustomers(count int) []CustomerData {
 			RegisteredAt: uint64(time.Now().Unix() - int64(rand.Intn(365*24*3600))), // Random time in last year
 		}
 	}
-	
+
 	return customers
 }
 
 func generateProducts(count int) []ProductData {
 	products := make([]ProductData, count)
-	
+
 	categories := []string{
 		"Electronics", "Clothing", "Books", "Home & Garden", "Sports", "Toys",
 		"Beauty", "Automotive", "Health", "Grocery", "Tools", "Music",
 	}
-	
+
 	productTypes := []string{
 		"Premium", "Standard", "Basic", "Deluxe", "Pro", "Lite", "Ultra", "Max",
 	}
-	
+
 	items := []string{
 		"Widget", "Gadget", "Device", "Tool", "Accessory", "Component", "Kit",
 		"Set", "Bundle", "Package", "Collection", "System",
 	}
-	
+
 	for i := 0; i < count; i++ {
 		category := categories[rand.Intn(len(categories))]
 		productType := productTypes[rand.Intn(len(productTypes))]
 		item := items[rand.Intn(len(items))]
-		
+
 		products[i] = ProductData{
 			ID:          uint32(i + 1),
 			Name:        fmt.Sprintf("%s %s %s", productType, category, item),
@@ -441,37 +442,37 @@ func generateProducts(count int) []ProductData {
 			StockLevel:  uint32(rand.Intn(1000)),
 		}
 	}
-	
+
 	return products
 }
 
 func generateOrders(count int, customers []CustomerData, products []ProductData) []OrderData {
 	orders := make([]OrderData, count)
-	
+
 	statuses := []string{"pending", "processing", "shipped", "delivered", "cancelled"}
 	currencies := []string{"USD", "EUR", "GBP"}
-	
+
 	for i := 0; i < count; i++ {
 		customer := customers[rand.Intn(len(customers))]
 		numItems := 1 + rand.Intn(5) // 1-5 items per order
-		
+
 		items := make([]OrderItemData, numItems)
 		var totalAmount uint64
-		
+
 		for j := 0; j < numItems; j++ {
 			product := products[rand.Intn(len(products))]
 			quantity := uint32(1 + rand.Intn(3))
-			
+
 			items[j] = OrderItemData{
 				ProductID:    product.ID,
 				Quantity:     quantity,
 				PricePerUnit: product.Price,
 				ProductName:  product.Name,
 			}
-			
+
 			totalAmount += product.Price * uint64(quantity)
 		}
-		
+
 		orders[i] = OrderData{
 			ID:         uint32(i + 1),
 			CustomerID: customer.ID,
@@ -482,6 +483,6 @@ func generateOrders(count int, customers []CustomerData, products []ProductData)
 			Items:      items,
 		}
 	}
-	
+
 	return orders
 }

@@ -2,10 +2,10 @@ package producer
 
 import (
 	"context"
-	"sync/atomic"
-	"testing"
 	"github.com/leowmjw/go-hollow/blob"
 	"github.com/leowmjw/go-hollow/internal"
+	"sync/atomic"
+	"testing"
 )
 
 // TestProducer_BasicCycle tests basic producer cycle functionality
@@ -14,7 +14,7 @@ func TestProducer_BasicCycle(t *testing.T) {
 	producer := NewProducer(WithBlobStore(blobStore))
 
 	// Test empty cycle - should not publish
-	version1 := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version1, _ := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		// empty cycle
 	})
 	if version1 != 0 {
@@ -22,7 +22,7 @@ func TestProducer_BasicCycle(t *testing.T) {
 	}
 
 	// Test cycle with data
-	version2 := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version2, _ := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("test_value")
 	})
 	if version2 == 0 {
@@ -30,7 +30,7 @@ func TestProducer_BasicCycle(t *testing.T) {
 	}
 
 	// Test cycle with same data - should return same version
-	version3 := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version3, _ := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("test_value")
 	})
 	if version3 != version2 {
@@ -38,7 +38,7 @@ func TestProducer_BasicCycle(t *testing.T) {
 	}
 
 	// Test cycle with different data
-	version4 := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version4, _ := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("different_value")
 	})
 	if version4 <= version3 {
@@ -49,10 +49,10 @@ func TestProducer_BasicCycle(t *testing.T) {
 // TestProducer_RestoreAndPublish tests producer restore functionality
 func TestProducer_RestoreAndPublish(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
-	
+
 	// Create initial producer and publish data
 	producer1 := NewProducer(WithBlobStore(blobStore))
-	version := producer1.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version, _ := producer1.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("test_data")
 	})
 
@@ -74,14 +74,14 @@ func TestProducer_RestoreAndPublish(t *testing.T) {
 func TestProducer_SingleProducerEnforcement(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
 	enforcer := internal.NewSingleProducerEnforcer()
-	
+
 	producer := NewProducer(
 		WithBlobStore(blobStore),
 		WithSingleProducerEnforcer(enforcer),
 	)
 
 	// Test as primary producer
-	version1 := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version1, _ := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("data1")
 	})
 	if version1 == 0 {
@@ -90,9 +90,9 @@ func TestProducer_SingleProducerEnforcement(t *testing.T) {
 
 	// Disable enforcement
 	enforcer.Disable()
-	
+
 	// Test as non-primary producer
-	version2 := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version2, _ := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("data2")
 	})
 	if version2 != version1 {
@@ -101,9 +101,9 @@ func TestProducer_SingleProducerEnforcement(t *testing.T) {
 
 	// Re-enable enforcement
 	enforcer.Enable()
-	
+
 	// Test as primary again
-	version3 := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version3, _ := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("data3")
 	})
 	if version3 <= version2 {
@@ -114,18 +114,18 @@ func TestProducer_SingleProducerEnforcement(t *testing.T) {
 // TestProducer_ValidationFailure tests producer validation behavior
 func TestProducer_ValidationFailure(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
-	
+
 	validator := &TestValidator{
 		shouldFail: &atomic.Bool{},
 	}
-	
+
 	producer := NewProducer(
 		WithBlobStore(blobStore),
 		WithValidator(validator),
 	)
 
 	// Test successful validation
-	version1 := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	version1, _ := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("data1")
 	})
 	if version1 == 0 {
@@ -134,8 +134,8 @@ func TestProducer_ValidationFailure(t *testing.T) {
 
 	// Test failed validation
 	validator.shouldFail.Store(true)
-	
-	err := producer.RunCycleWithError(context.Background(), func(ws *internal.WriteState) {
+
+	_, err := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("data2")
 	})
 	if err == nil {
@@ -150,8 +150,8 @@ func TestProducer_ValidationFailure(t *testing.T) {
 
 	// Test recovery after validation failure
 	validator.shouldFail.Store(false)
-	
-	version3 := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
+
+	version3, _ := producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		ws.Add("data3")
 	})
 	if version3 <= version1 {
@@ -162,7 +162,7 @@ func TestProducer_ValidationFailure(t *testing.T) {
 // TestProducer_TypeResharding tests automatic type resharding
 func TestProducer_TypeResharding(t *testing.T) {
 	blobStore := blob.NewInMemoryBlobStore()
-	
+
 	producer := NewProducer(
 		WithBlobStore(blobStore),
 		WithTypeResharding(true),
@@ -170,7 +170,7 @@ func TestProducer_TypeResharding(t *testing.T) {
 	)
 
 	// Create small dataset
-	_ = producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	_, _ = producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		for i := 0; i < 50; i++ {
 			ws.Add(TestRecord{ID: i, Value: i * 10})
 		}
@@ -183,7 +183,7 @@ func TestProducer_TypeResharding(t *testing.T) {
 	}
 
 	// Create larger dataset to trigger resharding
-	_ = producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
+	_, _ = producer.RunCycle(context.Background(), func(ws *internal.WriteState) {
 		for i := 0; i < 100; i++ {
 			ws.Add(TestRecord{ID: i, Value: i * 10})
 		}
